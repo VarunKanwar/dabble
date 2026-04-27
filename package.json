@@ -1,0 +1,100 @@
+{
+  "name": "duckview",
+  "displayName": "DuckView",
+  "description": "Readonly Parquet and SQLite previews inside VS Code.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:extension && npm run build:webview",
+    "build:extension": "tsc -p tsconfig.extension.json",
+    "build:webview": "tsc -p tsconfig.webview.json",
+    "test": "npm run build:extension && node --test dist/extension/test/*.test.js",
+    "check": "npm run build && npm run test"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.2-r.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:duckview.openSource",
+    "onCommand:duckview.openAsParquetDataset",
+    "onCommand:duckview.openWithDuckView",
+    "onCustomEditor:duckview.viewer"
+  ],
+  "main": "./dist/extension/index.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "duckview.openSource",
+        "title": "DuckView: Open Source"
+      },
+      {
+        "command": "duckview.openAsParquetDataset",
+        "title": "DuckView: Open as Parquet Dataset"
+      },
+      {
+        "command": "duckview.openWithDuckView",
+        "title": "DuckView: Open With DuckView"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "duckview.openWithDuckView",
+          "when": "resourceExtname == .parquet || resourceExtname == .sqlite || resourceExtname == .db || resourceExtname == .duckdb",
+          "group": "navigation"
+        },
+        {
+          "command": "duckview.openAsParquetDataset",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "duckview.viewer",
+        "displayName": "DuckView",
+        "selector": [
+          {
+            "filenamePattern": "*.parquet"
+          },
+          {
+            "filenamePattern": "*.sqlite"
+          },
+          {
+            "filenamePattern": "*.db"
+          },
+          {
+            "filenamePattern": "*.duckdb"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "DuckView",
+      "properties": {
+        "duckview.previewLimit": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 5000,
+          "description": "Default row limit for preview queries."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.116.0",
+    "typescript": "^6.0.3"
+  }
+}

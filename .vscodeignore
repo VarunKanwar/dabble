@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+.claude/**
+.consider/**
+src/**
+data/**
+lib/**
+dist/**/*.map
+dist/**/test/**
+AGENTS.md
+.gitignore
+.vscodeignore
+package-lock.json
+tsconfig*.json
