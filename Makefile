@@ -1,4 +1,4 @@
-.PHONY: build test check clean package package-all
+.PHONY: build test check clean package package-all publish publish-all
 
 build:
 	npm run build
@@ -17,3 +17,9 @@ package: check
 
 package-all: check
 	node scripts/package-vsix.mjs --all
+
+publish: package
+	node scripts/publish-vsix.mjs $(TARGET)
+
+publish-all: package-all
+	node scripts/publish-vsix.mjs --all

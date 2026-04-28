@@ -87,6 +87,39 @@ make package-all
 
 Generated VSIX files are written to `artifacts/`.
 
+Publish the current platform artifact:
+
+```sh
+make publish
+```
+
+Publish a specific target artifact:
+
+```sh
+make publish TARGET=linux-x64
+```
+
+Publish all packaged targets:
+
+```sh
+make publish-all
+```
+
+Publishing uses the local `./node_modules/.bin/vsce` binary and the already-generated VSIX files in `artifacts/`, so it preserves the target-specific DuckDB packaging logic instead of rebuilding a generic extension package.
+
+Before publishing:
+
+1. Create or confirm your Marketplace publisher, and make sure `package.json`'s `publisher` matches that publisher ID.
+2. Create an Azure DevOps PAT with organization access set to `All accessible organizations` and scope `Marketplace (Manage)`.
+3. Authenticate either by exporting `VSCE_PAT` or by running `./node_modules/.bin/vsce login <publisher>`.
+
+Example:
+
+```sh
+export VSCE_PAT=your_token_here
+make publish-all
+```
+
 The repository includes a CI workflow that runs checks and exercises `npm run package:all` on pushes, pull requests, and manual dispatches so packaging regressions are caught early. Marketplace publishing and manual browser uploads remain a separate release step.
 
 ## License
