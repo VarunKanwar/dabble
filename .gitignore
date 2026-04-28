@@ -6,5 +6,7 @@ dist/
 coverage/
 .nyc_output/
 .DS_Store
+.claude/
+.consider/
 .duckdb/
 data/

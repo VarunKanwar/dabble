@@ -4,7 +4,6 @@
 .consider/**
 src/**
 data/**
-lib/**
 dist/**/*.map
 dist/**/test/**
 AGENTS.md

@@ -49,7 +49,13 @@ These are intentional decisions, not accidents.
 - Prefer small, testable modules over large files with mixed concerns.
 - Prefer TypeScript everywhere except static assets like CSS.
 - Keep runtime dependencies minimal. Right now the only required runtime library is DuckDB itself.
-- Use `npm run build`, `npm test`, and `npm run check` before calling work done.
+- Use `make` as the entrypoint for all common tasks:
+  - `make build` — compile extension and webview
+  - `make test` — build and run tests
+  - `make check` — build + test (the pre-commit gate)
+  - `make clean` — remove `dist/`
+  - `make package` — run check, then produce a `.vsix`
+- Always run `make check` before calling work done.
 - Add tests for pure logic when changing:
   - source normalization
   - readonly SQL enforcement

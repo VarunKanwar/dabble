@@ -1,10 +1,22 @@
 {
   "name": "duckview",
   "displayName": "DuckView",
-  "description": "Readonly Parquet and SQLite previews inside VS Code.",
-  "version": "0.0.1",
-  "publisher": "local",
-  "private": true,
+  "description": "Inspect Parquet, SQLite, and DuckDB files in VS Code — powered by native DuckDB.",
+  "version": "0.1.0",
+  "publisher": "VarunKanwar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VarunKanwar/dabble"
+  },
+  "homepage": "https://github.com/VarunKanwar/dabble#readme",
+  "keywords": [
+    "parquet",
+    "duckdb",
+    "sqlite",
+    "data",
+    "viewer"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -20,7 +32,8 @@
     "@duckdb/node-api": "1.5.2-r.1"
   },
   "categories": [
-    "Other"
+    "Data Science",
+    "Visualization"
   ],
   "activationEvents": [
     "onCommand:duckview.openSource",

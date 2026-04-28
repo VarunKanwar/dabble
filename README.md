@@ -1,44 +1,49 @@
 # DuckView
 
-DuckView is a VS Code extension scaffold for readonly Parquet, DuckDB, SQLite, and Parquet-dataset inspection using native DuckDB in the extension host.
+Inspect Parquet, SQLite, and DuckDB files directly in VS Code. DuckView opens data files in a readonly viewer powered by native DuckDB — no external tools, no servers, no configuration.
 
-## Current MVP
+## Supported Formats
 
-- Opens `.parquet`, `.duckdb`, `.sqlite`, and `.db` files in a custom readonly editor
-- Adds `DuckView: Open Source` for local paths and S3 URIs
-- Adds `DuckView: Open as Parquet Dataset` for folder-backed datasets
-- Uses real DuckDB queries for:
-  - schema discovery
-  - preview rows
-  - summary stats
-  - column exploration
-  - readonly query execution
+| Format | How to open |
+|---|---|
+| `.parquet` | Open the file — DuckView activates automatically |
+| `.sqlite` / `.db` | Open the file — DuckView activates automatically |
+| `.duckdb` | Open the file — DuckView activates automatically |
+| Parquet dataset (folder) | Right-click a folder → **DuckView: Open as Parquet Dataset** |
+| S3 Parquet | Command palette → **DuckView: Open Source** → enter an `s3://` URI |
 
-## Architecture
+## Features
 
-- `src/extension/`: VS Code lifecycle, panel coordination, native DuckDB service
-- `src/shared/`: typed protocol shared by the extension host and the webview
-- `src/webview/`: typed UI state, rendering, and event handling
-- `media/app.css`: the DuckDB-inspired shell styling
-- `dist/`: generated build output used by VS Code at runtime
+**Preview** shows schema, summary statistics, and sample rows for the selected table. Column exploration gives you value distributions (histograms for numeric columns, top values for categorical ones).
 
-## Run
+**Query** lets you write and run readonly SQL against the opened source. Results stream back in pages — large result sets won't lock up the editor.
 
-1. Open this folder in VS Code.
-2. Run `npm install`.
-3. Press `F5`.
-4. In the Extension Development Host, open a Parquet or SQLite file or run `DuckView: Open Source`.
+Multi-table sources (SQLite, DuckDB databases) show a table list in the sidebar. Click a table to switch context.
 
-The debug launcher runs `npm run build` before starting the Extension Development Host.
+## Settings
 
-## Checks
+| Setting | Default | Description |
+|---|---|---|
+| `duckview.previewLimit` | `100` | Row limit for preview queries (1–5000) |
 
-- `npm run build`
-- `npm test`
-- `npm run check`
+## Requirements
 
-## Notes
+- VS Code 1.90 or later
+- macOS, Linux, or Windows (desktop only)
 
-- SQLite and S3 rely on DuckDB extensions (`sqlite` and `httpfs`).
-- DuckView sets DuckDB's `extension_directory` to `/tmp/duckview-duckdb-extensions` so extension downloads do not depend on `~/.duckdb`.
-- The UI is intentionally plain and close to a DuckDB-UI-style inspection workflow rather than a dashboard.
+SQLite and S3 support use DuckDB's `sqlite` and `httpfs` extensions, which are downloaded automatically on first use to `/tmp/duckview-duckdb-extensions`.
+
+## Development
+
+See [AGENTS.md](AGENTS.md) for architecture, conventions, and contribution guidance.
+
+```
+npm install
+make check   # build + test
+```
+
+Press F5 in VS Code to launch the Extension Development Host.
+
+## License
+
+[MIT](LICENSE)
