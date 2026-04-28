@@ -24,8 +24,8 @@ The product goal is not "invent a new BI app." The goal is:
 These are intentional decisions, not accidents.
 
 - Use native DuckDB via `@duckdb/node-api`, not DuckDB-Wasm.
-- Keep the extension desktop-first and optimized for local VS Code on macOS/Linux/Windows.
-- Treat the DuckDB engine as embedded inside the extension host, not as a separate server product.
+- Keep the extension desktop-only and optimized for VS Code desktop whether the workspace is local or remote.
+- Treat the DuckDB engine as embedded inside the workspace extension host, not as a separate server product.
 - Keep the UI minimal, tool-like, and DuckDB-UI-inspired rather than decorative.
 - Keep `Preview` explicit and bounded by product-owned queries.
 - Keep `Query` exact: user SQL should run as written, without hidden `LIMIT`s or silent rewrites.
@@ -45,6 +45,9 @@ These are intentional decisions, not accidents.
 - Webview state/render/event code belongs in `src/webview/`.
 - Styling lives in `media/app.css`.
 - Keep the extension host and webview boundary explicit and typed.
+- Keep the manifest aligned with DuckView's execution model: it should run as a workspace extension so native DuckDB executes where the workspace files live.
+- Treat file-open behavior as part of the product contract: supported file types should have explicit default editor associations in the manifest, not just a custom editor contribution with hopeful defaults.
+- Treat packaging as part of the runtime contract. DuckView has a native dependency, so release artifacts must include runtime dependencies and should be produced as platform-specific VSIX packages.
 - Add or change message types in the shared protocol first, then update the parser, provider, and webview.
 - Prefer small, testable modules over large files with mixed concerns.
 - Prefer TypeScript everywhere except static assets like CSS.
@@ -65,10 +68,12 @@ These are intentional decisions, not accidents.
 ## Architecture Notes
 
 - The extension entrypoint is `dist/extension/index.js`, generated from `src/index.ts`.
-- The webview is a real browser surface, but the query engine is native DuckDB in the extension host.
+- DuckView runs as a workspace extension. In local folders that means the local extension host; in Remote-SSH, WSL, or Dev Container workspaces that means the remote workspace extension host.
+- The webview is a real browser surface in the VS Code client, but the query engine is native DuckDB in the workspace extension host.
 - For non-`.duckdb` sources, DuckView reuses a shared in-memory DuckDB instance and opens short-lived connections per operation.
 - For `.duckdb` files, DuckView opens the database read-only for the operation, then closes it.
 - Query mode uses explicit result paging/streaming semantics rather than loading the full result eagerly into JavaScript memory.
+- Marketplace and VSIX distribution should target the actual host platform (`darwin-*`, `linux-*`, `win32-*`) so the packaged DuckDB binding matches the machine that will run the workspace extension.
 
 ## Blessed Patterns
 

@@ -3,6 +3,7 @@ dist/
 .vscode-test/
 *.vsix
 *.tgz
+artifacts/
 coverage/
 .nyc_output/
 .DS_Store

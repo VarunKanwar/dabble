@@ -1,7 +1,10 @@
 .vscode/**
 .vscode-test/**
+.github/**
 .claude/**
 .consider/**
+scripts/**
+artifacts/**
 src/**
 data/**
 dist/**/*.map

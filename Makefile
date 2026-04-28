@@ -1,4 +1,4 @@
-.PHONY: build test check clean package
+.PHONY: build test check clean package package-all
 
 build:
 	npm run build
@@ -10,7 +10,10 @@ check:
 	npm run check
 
 clean:
-	rm -rf dist/
+	rm -rf dist/ artifacts/
 
 package: check
-	npx @vscode/vsce package --no-dependencies
+	node scripts/package-vsix.mjs $(TARGET)
+
+package-all: check
+	node scripts/package-vsix.mjs --all
