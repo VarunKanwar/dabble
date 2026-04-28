@@ -6,16 +6,16 @@ import { DEFAULT_PREVIEW_LIMIT, inferKindFromPath, normalizeIncomingSource, norm
 import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
 import { parseWebviewMessage } from "./webviewMessage";
 
-const VIEW_TYPE = "duckview.viewer";
+const VIEW_TYPE = "dabble.viewer";
 
-let providerInstance: DuckViewProvider | null = null;
+let providerInstance: DabbleProvider | null = null;
 
-export function activateDuckView(context: vscode.ExtensionContext): vscode.Disposable {
-  providerInstance = new DuckViewProvider(context);
+export function activateDabble(context: vscode.ExtensionContext): vscode.Disposable {
+  providerInstance = new DabbleProvider(context);
   return providerInstance.activate();
 }
 
-export function deactivateDuckView(): void {
+export function deactivateDabble(): void {
   providerInstance = null;
 }
 
@@ -30,7 +30,7 @@ interface PanelController {
   activeQuery: QuerySession | null;
 }
 
-class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDocument> {
+class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocument> {
   private readonly duckdb = new DuckDBService();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -45,15 +45,15 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
       })
     );
 
-    registrations.push(vscode.commands.registerCommand("duckview.openSource", () => this.openSourcePanel()));
+    registrations.push(vscode.commands.registerCommand("dabble.openSource", () => this.openSourcePanel()));
     registrations.push(
-      vscode.commands.registerCommand("duckview.openAsParquetDataset", (resource?: vscode.Uri) => this.openDatasetPanel(resource))
+      vscode.commands.registerCommand("dabble.openAsParquetDataset", (resource?: vscode.Uri) => this.openDatasetPanel(resource))
     );
     registrations.push(
-      vscode.commands.registerCommand("duckview.openWithDuckView", async (resource?: vscode.Uri) => {
+      vscode.commands.registerCommand("dabble.openWithDabble", async (resource?: vscode.Uri) => {
         const target = resource ?? vscode.window.activeTextEditor?.document.uri;
         if (!target) {
-          void vscode.window.showInformationMessage("Select a Parquet, DuckDB, or SQLite file to open with DuckView.");
+          void vscode.window.showInformationMessage("Select a Parquet, DuckDB, or SQLite file to open with Dabble.");
           return;
         }
         await vscode.commands.executeCommand("vscode.openWith", target, VIEW_TYPE);
@@ -63,11 +63,11 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
     return vscode.Disposable.from(...registrations);
   }
 
-  async openCustomDocument(uri: vscode.Uri): Promise<DuckViewDocument> {
-    return new DuckViewDocument(uri);
+  async openCustomDocument(uri: vscode.Uri): Promise<DabbleDocument> {
+    return new DabbleDocument(uri);
   }
 
-  async resolveCustomEditor(document: DuckViewDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
+  async resolveCustomEditor(document: DabbleDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
     const initialSource: SourceDescriptor = {
       kind: inferKindFromPath(document.uri.fsPath),
       path: document.uri.fsPath,
@@ -85,8 +85,8 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
 
   async openSourcePanel(): Promise<void> {
     const panel = vscode.window.createWebviewPanel(
-      "duckview.openSource",
-      "DuckView: Open Source",
+      "dabble.openSource",
+      "Dabble: Open Source",
       vscode.ViewColumn.Active,
       getWebviewOptions(this.context)
     );
@@ -111,8 +111,8 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
     }
 
     const panel = vscode.window.createWebviewPanel(
-      "duckview.dataset",
-      `DuckView: ${path.basename(target.fsPath)}`,
+      "dabble.dataset",
+      `Dabble: ${path.basename(target.fsPath)}`,
       vscode.ViewColumn.Active,
       getWebviewOptions(this.context)
     );
@@ -271,7 +271,7 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
       previewLimit: controller.state.previewLimit
     });
     controller.state.source = result.source;
-    panel.title = `DuckView: ${path.basename(result.source.path || "Source")}`;
+    panel.title = `Dabble: ${path.basename(result.source.path || "Source")}`;
     await this.postMessage(panel, {
       type: "sourceData",
       mode: controller.state.mode,
@@ -295,7 +295,7 @@ class DuckViewProvider implements vscode.CustomReadonlyEditorProvider<DuckViewDo
   }
 }
 
-class DuckViewDocument implements vscode.CustomDocument {
+class DabbleDocument implements vscode.CustomDocument {
   constructor(readonly uri: vscode.Uri) {}
 
   dispose(): void {}
@@ -323,5 +323,5 @@ async function pickFolderUri(): Promise<vscode.Uri | undefined> {
 }
 
 function getPreviewLimit(): number {
-  return normalizePreviewLimit(vscode.workspace.getConfiguration("duckview").get("previewLimit", DEFAULT_PREVIEW_LIMIT));
+  return normalizePreviewLimit(vscode.workspace.getConfiguration("dabble").get("previewLimit", DEFAULT_PREVIEW_LIMIT));
 }

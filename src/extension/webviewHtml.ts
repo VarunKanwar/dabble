@@ -26,7 +26,7 @@ export function renderWebviewShell(context: vscode.ExtensionContext, webview: vs
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${styleUri}" />
-    <title>DuckView</title>
+    <title>Dabble</title>
   </head>
   <body>
     <div id="app"></div>

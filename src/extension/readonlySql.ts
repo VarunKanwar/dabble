@@ -18,7 +18,7 @@ export function enforceReadonlySql(sql: string): string {
   const firstWord = normalized.split(/\s+/)[0];
 
   if (!ALLOWED_READONLY_KEYWORDS.has(firstWord)) {
-    throw new Error("DuckView only allows readonly queries: SELECT, WITH, SHOW, DESCRIBE, SUMMARIZE, FROM, VALUES.");
+    throw new Error("Dabble only allows readonly queries: SELECT, WITH, SHOW, DESCRIBE, SUMMARIZE, FROM, VALUES.");
   }
 
   return trimmed;

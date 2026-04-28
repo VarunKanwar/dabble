@@ -1,10 +1,10 @@
 import type * as vscode from "vscode";
-import { activateDuckView, deactivateDuckView } from "./duckviewProvider";
+import { activateDabble, deactivateDabble } from "./dabbleProvider";
 
 export function activate(context: vscode.ExtensionContext): vscode.Disposable {
-  return activateDuckView(context);
+  return activateDabble(context);
 }
 
 export function deactivate(): void {
-  deactivateDuckView();
+  deactivateDabble();
 }

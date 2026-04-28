@@ -1,6 +1,6 @@
 {
-  "name": "duckview",
-  "displayName": "DuckView",
+  "name": "dabble",
+  "displayName": "Dabble",
   "description": "Inspect Parquet, SQLite, and DuckDB files in VS Code — powered by native DuckDB.",
   "version": "0.1.0",
   "publisher": "VarunKanwar",
@@ -38,10 +38,10 @@
     "Visualization"
   ],
   "activationEvents": [
-    "onCommand:duckview.openSource",
-    "onCommand:duckview.openAsParquetDataset",
-    "onCommand:duckview.openWithDuckView",
-    "onCustomEditor:duckview.viewer"
+    "onCommand:dabble.openSource",
+    "onCommand:dabble.openAsParquetDataset",
+    "onCommand:dabble.openWithDabble",
+    "onCustomEditor:dabble.viewer"
   ],
   "main": "./dist/extension/index.js",
   "extensionKind": [
@@ -50,27 +50,27 @@
   "contributes": {
     "commands": [
       {
-        "command": "duckview.openSource",
-        "title": "DuckView: Open Source"
+        "command": "dabble.openSource",
+        "title": "Dabble: Open Source"
       },
       {
-        "command": "duckview.openAsParquetDataset",
-        "title": "DuckView: Open as Parquet Dataset"
+        "command": "dabble.openAsParquetDataset",
+        "title": "Dabble: Open as Parquet Dataset"
       },
       {
-        "command": "duckview.openWithDuckView",
-        "title": "DuckView: Open With DuckView"
+        "command": "dabble.openWithDabble",
+        "title": "Dabble: Open With Dabble"
       }
     ],
     "menus": {
       "explorer/context": [
         {
-          "command": "duckview.openWithDuckView",
+          "command": "dabble.openWithDabble",
           "when": "resourceExtname == .parquet || resourceExtname == .sqlite || resourceExtname == .db || resourceExtname == .duckdb",
           "group": "navigation"
         },
         {
-          "command": "duckview.openAsParquetDataset",
+          "command": "dabble.openAsParquetDataset",
           "when": "explorerResourceIsFolder",
           "group": "navigation"
         }
@@ -78,8 +78,8 @@
     },
     "customEditors": [
       {
-        "viewType": "duckview.viewer",
-        "displayName": "DuckView",
+        "viewType": "dabble.viewer",
+        "displayName": "Dabble",
         "selector": [
           {
             "filenamePattern": "*.parquet"
@@ -99,16 +99,16 @@
     ],
     "configurationDefaults": {
       "workbench.editorAssociations": {
-        "*.parquet": "duckview.viewer",
-        "*.sqlite": "duckview.viewer",
-        "*.db": "duckview.viewer",
-        "*.duckdb": "duckview.viewer"
+        "*.parquet": "dabble.viewer",
+        "*.sqlite": "dabble.viewer",
+        "*.db": "dabble.viewer",
+        "*.duckdb": "dabble.viewer"
       }
     },
     "configuration": {
-      "title": "DuckView",
+      "title": "Dabble",
       "properties": {
-        "duckview.previewLimit": {
+        "dabble.previewLimit": {
           "type": "number",
           "default": 100,
           "minimum": 1,

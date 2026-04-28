@@ -128,7 +128,7 @@ export function createEmptyExplorer(): ExplorerPayload {
 export function createEmptyPayload(): SourcePayload {
   return {
     path: "",
-    title: "Loading DuckView",
+    title: "Loading Dabble",
     text: "",
     stats: [],
     tree: ["", "", "", ""],

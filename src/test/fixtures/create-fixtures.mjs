@@ -56,7 +56,7 @@ dbConn.closeSync();
 dbInstance.closeSync();
 
 // --- sample.sqlite via DuckDB's sqlite extension ---
-await conn.run(`SET extension_directory = '/tmp/duckview-duckdb-extensions'`);
+await conn.run(`SET extension_directory = '/tmp/dabble-duckdb-extensions'`);
 try {
   await conn.run(`LOAD sqlite`);
 } catch {

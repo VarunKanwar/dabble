@@ -1,3 +1,3 @@
-import { bootDuckView } from "./webview/app.js";
+import { bootDabble } from "./webview/app.js";
 
-bootDuckView();
+bootDabble();

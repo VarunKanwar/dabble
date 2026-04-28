@@ -15,7 +15,7 @@ import { enforceReadonlySql } from "./readonlySql";
 import { normalizePreviewLimit, normalizeSource } from "./sourceUtils";
 
 const DEFAULT_TABLE_ALIAS = "selected_relation";
-const EXTENSION_DIRECTORY = "/tmp/duckview-duckdb-extensions";
+const EXTENSION_DIRECTORY = "/tmp/dabble-duckdb-extensions";
 const QUERY_PAGE_ROW_TARGET = 2048;
 
 type QueryRow = Record<string, unknown>;
@@ -157,7 +157,7 @@ export class DuckDBService {
       if (source.s3Profile) {
         const profile = escapeLiteral(source.s3Profile);
         await connection.run(`
-          CREATE OR REPLACE SECRET duckview_s3_secret (
+          CREATE OR REPLACE SECRET dabble_s3_secret (
             TYPE s3,
             PROVIDER credential_chain,
             CHAIN config,

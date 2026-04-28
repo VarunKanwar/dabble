@@ -1,10 +1,10 @@
 # AGENTS
 
-This file is the working guide for contributors and agents touching DuckView.
+This file is the working guide for contributors and agents touching Dabble.
 
 ## Product Scope
 
-DuckView is a desktop VS Code extension for readonly inspection of:
+Dabble is a desktop VS Code extension for readonly inspection of:
 
 - `.parquet` files
 - Parquet dataset folders
@@ -45,9 +45,9 @@ These are intentional decisions, not accidents.
 - Webview state/render/event code belongs in `src/webview/`.
 - Styling lives in `media/app.css`.
 - Keep the extension host and webview boundary explicit and typed.
-- Keep the manifest aligned with DuckView's execution model: it should run as a workspace extension so native DuckDB executes where the workspace files live.
+- Keep the manifest aligned with Dabble's execution model: it should run as a workspace extension so native DuckDB executes where the workspace files live.
 - Treat file-open behavior as part of the product contract: supported file types should have explicit default editor associations in the manifest, not just a custom editor contribution with hopeful defaults.
-- Treat packaging as part of the runtime contract. DuckView has a native dependency, so release artifacts must include runtime dependencies and should be produced as platform-specific VSIX packages.
+- Treat packaging as part of the runtime contract. Dabble has a native dependency, so release artifacts must include runtime dependencies and should be produced as platform-specific VSIX packages.
 - Add or change message types in the shared protocol first, then update the parser, provider, and webview.
 - Prefer small, testable modules over large files with mixed concerns.
 - Prefer TypeScript everywhere except static assets like CSS.
@@ -68,10 +68,10 @@ These are intentional decisions, not accidents.
 ## Architecture Notes
 
 - The extension entrypoint is `dist/extension/index.js`, generated from `src/index.ts`.
-- DuckView runs as a workspace extension. In local folders that means the local extension host; in Remote-SSH, WSL, or Dev Container workspaces that means the remote workspace extension host.
+- Dabble runs as a workspace extension. In local folders that means the local extension host; in Remote-SSH, WSL, or Dev Container workspaces that means the remote workspace extension host.
 - The webview is a real browser surface in the VS Code client, but the query engine is native DuckDB in the workspace extension host.
-- For non-`.duckdb` sources, DuckView reuses a shared in-memory DuckDB instance and opens short-lived connections per operation.
-- For `.duckdb` files, DuckView opens the database read-only for the operation, then closes it.
+- For non-`.duckdb` sources, Dabble reuses a shared in-memory DuckDB instance and opens short-lived connections per operation.
+- For `.duckdb` files, Dabble opens the database read-only for the operation, then closes it.
 - Query mode uses explicit result paging/streaming semantics rather than loading the full result eagerly into JavaScript memory.
 - Marketplace and VSIX distribution should target the actual host platform (`darwin-*`, `linux-*`, `win32-*`) so the packaged DuckDB binding matches the machine that will run the workspace extension.
 

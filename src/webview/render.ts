@@ -11,7 +11,7 @@ export function renderApp(state: AppState): string {
       style="--sidebar-width:${state.ui.sidebarWidth}px; --explorer-height:${state.ui.explorerHeight}px;"
     >
       <div class="topbar">
-        <div class="topbar-title">DuckView</div>
+        <div class="topbar-title">Dabble</div>
         <div class="topbar-path">${escapeHtml(payload.path || "")}</div>
       </div>
 

@@ -36,7 +36,7 @@ function main() {
   mkdirSync(artifactsDir, { recursive: true });
 
   for (const target of targets) {
-    packageTarget(target, packageJson.version, artifactsDir);
+    packageTarget(packageJson.name, target, packageJson.version, artifactsDir);
   }
 }
 
@@ -89,14 +89,14 @@ function assertBuildOutputExists() {
   }
 }
 
-function packageTarget(target, version, artifactsDir) {
+function packageTarget(packageName, target, version, artifactsDir) {
   const targetConfig = targetConfigs[target];
-  const stageDir = mkdtempSync(path.join(os.tmpdir(), `duckview-${target}-`));
-  const vsixPath = path.join(artifactsDir, `duckview-${version}-${target}.vsix`);
+  const stageDir = mkdtempSync(path.join(os.tmpdir(), `${packageName}-${target}-`));
+  const vsixPath = path.join(artifactsDir, `${packageName}-${version}-${target}.vsix`);
 
   try {
     copyStageFiles(stageDir);
-    installRuntimeDependencies(stageDir, targetConfig);
+    installRuntimeDependencies(packageName, stageDir, targetConfig);
     assertTargetBindingInstalled(stageDir, target);
     runVscePackage(stageDir, target, vsixPath);
   } finally {
@@ -124,8 +124,8 @@ function sanitizeStagePackageJson(stageDir) {
   writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
-function installRuntimeDependencies(stageDir, targetConfig) {
-  const cacheDir = process.env.NPM_CONFIG_CACHE || path.join(os.tmpdir(), "duckview-npm-cache");
+function installRuntimeDependencies(packageName, stageDir, targetConfig) {
+  const cacheDir = process.env.NPM_CONFIG_CACHE || path.join(os.tmpdir(), `${packageName}-npm-cache`);
   runCommand(npmCommand(), ["ci", "--omit=dev", "--include=optional", `--os=${targetConfig.os}`, `--cpu=${targetConfig.cpu}`], {
     cwd: stageDir,
     env: {

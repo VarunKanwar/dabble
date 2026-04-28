@@ -19,17 +19,17 @@ interface VsCodeApi<State> {
   setState(newState: State): void;
 }
 
-export function bootDuckView(): void {
+export function bootDabble(): void {
   const root = document.getElementById("app");
   if (!root) {
-    throw new Error("DuckView root element was not found.");
+    throw new Error("Dabble root element was not found.");
   }
 
   const vscode = acquireVsCodeApi<{ sidebarWidth?: number; explorerHeight?: number }>();
-  new DuckViewApp(root, vscode);
+  new DabbleApp(root, vscode);
 }
 
-class DuckViewApp {
+class DabbleApp {
   private state: AppState;
 
   constructor(
