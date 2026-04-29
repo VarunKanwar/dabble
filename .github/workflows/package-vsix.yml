@@ -22,7 +22,7 @@ jobs:
         run: npm ci
 
       - name: Run checks
-        run: npm run check
+        run: make check
 
   package:
     needs: verify
@@ -41,4 +41,4 @@ jobs:
         run: npm ci
 
       - name: Build platform-specific VSIX files
-        run: npm run package:all
+        run: make package-all
