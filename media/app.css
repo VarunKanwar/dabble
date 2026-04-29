@@ -729,6 +729,30 @@ th {
   font-size: 12px;
 }
 
+.shortcut-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app[data-platform="mac"] .shortcut-hint-default {
+  display: none;
+}
+
+.app[data-platform="default"] .shortcut-hint-mac {
+  display: none;
+}
+
+.shortcut-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.shortcut-enter {
+  position: relative;
+  top: 1px;
+}
+
 .editor-shell {
   border-top: 1px solid var(--line-soft);
 }

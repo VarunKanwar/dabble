@@ -99,7 +99,6 @@ function renderClickedMode(state: AppState): string {
               <div class="surface-title">Query</div>
               <div class="surface-meta"><span>Ad hoc readonly SQL</span></div>
             </div>
-            <button class="toolbar-button" data-action="focus-query">Focus Editor</button>
           </div>
 
           <div class="surface query-cell">
@@ -108,7 +107,15 @@ function renderClickedMode(state: AppState): string {
                 <div class="surface-title">SQL</div>
                 <div class="surface-meta"><span>Readonly SQL</span></div>
               </div>
-              <button class="toolbar-button" data-action="run-query">Run</button>
+              <button class="toolbar-button shortcut-button" data-action="run-query" title="Run query">
+                <span>Run</span>
+                <span class="shortcut-label shortcut-hint-mac" aria-hidden="true">
+                  (⌘<span class="shortcut-enter">↵</span>)
+                </span>
+                <span class="shortcut-label shortcut-hint-default" aria-hidden="true">
+                  (Ctrl+<span class="shortcut-enter">↵</span>)
+                </span>
+              </button>
             </div>
             <div class="editor-shell">
               <textarea id="query-editor" class="query-editor">${escapeHtml(state.querySql)}</textarea>

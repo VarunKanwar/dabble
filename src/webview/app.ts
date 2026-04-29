@@ -36,12 +36,14 @@ class DabbleApp {
   private state: AppState;
   private columnAnimationTimer: number | null = null;
   private columnAnimationTarget: string | null = null;
+  private readonly platformShortcut: "mac" | "default";
 
   constructor(
     private readonly root: HTMLElement,
     private readonly vscode: VsCodeApi<{ sidebarWidth?: number; explorerHeight?: number }>
   ) {
     this.state = createInitialState(vscode.getState() ?? {});
+    this.platformShortcut = detectShortcutPlatform();
 
     window.addEventListener("message", (event: MessageEvent<ExtensionToWebviewMessage>) => {
       this.state = applyExtensionMessage(this.state, event.data);
@@ -51,7 +53,9 @@ class DabbleApp {
     this.root.addEventListener("click", (event) => this.handleClick(event));
     this.root.addEventListener("input", (event) => this.handleInput(event));
     this.root.addEventListener("change", (event) => this.handleInput(event));
+    this.root.addEventListener("keydown", (event) => this.handleKeyDown(event));
     this.root.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
+    window.addEventListener("keydown", (event) => this.handleGlobalKeyDown(event));
 
     this.render();
     this.postMessage({ type: "ready" });
@@ -124,19 +128,13 @@ class DabbleApp {
           type: "runQuery",
           sql: this.state.querySql
         });
+        this.focusQueryEditor();
         return;
       case "load-more-query-rows":
         this.postMessage({ type: "loadMoreQueryRows" });
         return;
       case "load-all-query-rows":
         this.postMessage({ type: "loadAllQueryRows" });
-        return;
-      case "focus-query":
-        this.state = setTab(this.state, "query");
-        this.render();
-        requestAnimationFrame(() => {
-          this.root.querySelector<HTMLTextAreaElement>("#query-editor")?.focus();
-        });
         return;
       case "browse-local":
         this.postMessage({
@@ -196,6 +194,43 @@ class DabbleApp {
     }
   }
 
+  private handleKeyDown(event: KeyboardEvent): void {
+    const target = event.target as HTMLTextAreaElement | null;
+    if (!target || target.id !== "query-editor") {
+      return;
+    }
+
+    const enterPressed = event.key === "Enter";
+    const runShortcutPressed = event.metaKey || event.ctrlKey;
+    if (!enterPressed || !runShortcutPressed) {
+      return;
+    }
+
+    event.preventDefault();
+    this.postMessage({
+      type: "runQuery",
+      sql: this.state.querySql
+    });
+  }
+
+  private handleGlobalKeyDown(event: KeyboardEvent): void {
+    if (event.key !== "Escape" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return;
+    }
+    if (this.state.mode !== "clicked" || this.state.tab !== "query") {
+      return;
+    }
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.id === "query-editor") {
+      return;
+    }
+    const focused = this.focusQueryEditor();
+    if (focused) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
   private handlePointerDown(event: PointerEvent): void {
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-resize]");
     if (!target) {
@@ -245,7 +280,10 @@ class DabbleApp {
   }
 
   private render(): void {
+    const focusSnapshot = this.captureQueryEditorFocus();
     this.root.innerHTML = renderApp(this.state);
+    this.applyPlatformAttributes();
+    this.restoreQueryEditorFocus(focusSnapshot);
     const activeAnimation = this.state.closingColumnName || this.state.openingColumnName;
     if (activeAnimation) {
       if (this.columnAnimationTimer == null || this.columnAnimationTarget !== activeAnimation) {
@@ -270,6 +308,14 @@ class DabbleApp {
     app.style.setProperty("--explorer-height", `${this.state.ui.explorerHeight}px`);
   }
 
+  private applyPlatformAttributes(): void {
+    const app = this.root.querySelector<HTMLElement>(".app");
+    if (!app) {
+      return;
+    }
+    app.dataset.platform = this.platformShortcut;
+  }
+
   private persistUiState(): void {
     this.vscode.setState({
       sidebarWidth: this.state.ui.sidebarWidth,
@@ -279,6 +325,44 @@ class DabbleApp {
 
   private postMessage(message: WebviewToExtensionMessage): void {
     this.vscode.postMessage(message);
+  }
+
+  private focusQueryEditor(): boolean {
+    if (this.state.mode !== "clicked" || this.state.tab !== "query") {
+      return false;
+    }
+    const editor = this.root.querySelector<HTMLTextAreaElement>("#query-editor");
+    if (!editor) {
+      return false;
+    }
+    editor.focus({ preventScroll: true });
+    return true;
+  }
+
+  private captureQueryEditorFocus(): QueryEditorFocusSnapshot | null {
+    const editor = this.root.querySelector<HTMLTextAreaElement>("#query-editor");
+    if (!editor || document.activeElement !== editor) {
+      return null;
+    }
+    return {
+      selectionStart: editor.selectionStart,
+      selectionEnd: editor.selectionEnd,
+      scrollTop: editor.scrollTop
+    };
+  }
+
+  private restoreQueryEditorFocus(snapshot: QueryEditorFocusSnapshot | null): void {
+    if (!snapshot) {
+      return;
+    }
+    const editor = this.root.querySelector<HTMLTextAreaElement>("#query-editor");
+    if (!editor) {
+      return;
+    }
+    editor.focus({ preventScroll: true });
+    editor.selectionStart = snapshot.selectionStart;
+    editor.selectionEnd = snapshot.selectionEnd;
+    editor.scrollTop = snapshot.scrollTop;
   }
 
   private animateColumnClose(columnName: string): void {
@@ -320,4 +404,16 @@ function isViewMode(value: unknown): value is ViewMode {
 
 function isMainTab(value: unknown): value is MainTab {
   return value === "preview" || value === "query";
+}
+
+function detectShortcutPlatform(): "mac" | "default" {
+  const userAgentDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform;
+  const source = `${userAgentDataPlatform ?? ""} ${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`.toLowerCase();
+  return /mac|iphone|ipad|ipod/.test(source) ? "mac" : "default";
+}
+
+interface QueryEditorFocusSnapshot {
+  selectionStart: number;
+  selectionEnd: number;
+  scrollTop: number;
 }
