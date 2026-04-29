@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1
+
+- Added the Dabble icon to the extension package metadata and repository README.
+
 ## 0.2.0
 
 - Improved remote workspace support and platform-specific VSIX packaging behavior.
