@@ -2,7 +2,7 @@
   "name": "dabble",
   "displayName": "Dabble",
   "description": "Inspect Parquet, SQLite, and DuckDB files in VS Code — powered by native DuckDB.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "VarunKanwar",
   "license": "MIT",
   "repository": {

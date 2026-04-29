@@ -2,9 +2,13 @@
 
 ## Unreleased
 
-- S3 open-source flow now defaults to DuckDB's automatic AWS credential chain.
-- Leaving the S3 profile field blank uses credentials from the workspace host, including environment variables, `~/.aws` config, and ECS/EC2 roles.
-- The S3 profile field is now optional and only needed when forcing a specific AWS profile.
+## 0.2.0
+
+- Improved remote workspace support and platform-specific VSIX packaging behavior.
+- Added resumable multi-target VSIX publishing support for release workflows.
+- Refined the column explorer layout and summary/stat presentation for more stable table inspection.
+- Improved query editor keyboard focus and run shortcut behavior.
+- S3 open-source flow now defaults to DuckDB's automatic AWS credential chain, with an optional AWS profile override.
 
 ## 0.1.0
 
