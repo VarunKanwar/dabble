@@ -39,6 +39,8 @@ When Dabble is installed in a remote workspace, the same default editor associat
 
 SQLite and S3 support use DuckDB's `sqlite` and `httpfs` extensions, which are downloaded automatically on first use to `/tmp/dabble-duckdb-extensions`.
 
+For S3 sources, Dabble uses DuckDB's automatic AWS credential chain by default. Leave the profile field blank to use credentials from the workspace host, such as environment variables, `~/.aws` config, or an ECS/EC2 role. Enter a profile name only when you want to force a specific AWS profile from that host.
+
 ## Development
 
 See [AGENTS.md](AGENTS.md) for architecture, conventions, and contribution guidance.

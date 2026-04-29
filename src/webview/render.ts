@@ -365,11 +365,11 @@ function renderConnectMode(state: AppState): string {
               <input id="s3-path" value="${escapeAttr(state.form.s3Path)}" />
             </div>
             <div class="field">
-              <label>Credentials Profile</label>
+              <label>AWS profile (optional)</label>
               <input id="s3-profile" value="${escapeAttr(state.form.s3Profile)}" />
             </div>
             <div class="actions">
-              <span class="link">DuckDB secret will use this profile</span>
+              <span class="link">Leave blank to use automatic credentials on the workspace host</span>
               <button class="toolbar-button" data-action="open-s3">Open Summary</button>
             </div>
           </div>

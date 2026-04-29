@@ -3,6 +3,12 @@ import test from "node:test";
 import { createEmptyPayload } from "../shared/protocol";
 import { applyExtensionMessage, createInitialState, setExpandedColumn, setOpeningColumn } from "../webview/state";
 
+test("createInitialState leaves the S3 profile blank for automatic credentials", () => {
+  const state = createInitialState();
+
+  assert.equal(state.form.s3Profile, "");
+});
+
 test("sourceData defaults to collapsed and expands on same-table column selection", () => {
   const initial = applyExtensionMessage(createInitialState(), {
     type: "sourceData",
@@ -57,4 +63,25 @@ test("sourceData defaults to collapsed and expands on same-table column selectio
   assert.equal(expanded.openingColumnName, "kind");
   assert.equal(setExpandedColumn(expanded, null).expandedColumnName, null);
   assert.equal(setOpeningColumn(expanded, null).openingColumnName, null);
+});
+
+test("sourceData keeps the S3 profile blank when the source uses automatic credentials", () => {
+  const initial = createInitialState();
+  initial.form.s3Profile = "analytics";
+
+  const next = applyExtensionMessage(initial, {
+    type: "sourceData",
+    mode: "connect",
+    previewLimit: 100,
+    source: {
+      kind: "s3",
+      path: "s3://bucket/path",
+      selectedTable: "remote_dataset",
+      selectedColumn: null,
+      s3Profile: null
+    },
+    payload: createEmptyPayload()
+  });
+
+  assert.equal(next.form.s3Profile, "");
 });

@@ -34,7 +34,7 @@ export interface AppState {
 }
 
 const DEFAULT_S3_PATH = "s3://acme-lake/orders/year=2026/month=04/";
-const DEFAULT_S3_PROFILE = "default";
+const DEFAULT_S3_PROFILE = "";
 const DEFAULT_LOCAL_TYPE: LocalSourceKind = "parquet";
 
 export function createInitialState(persisted: PersistedUiState = {}): AppState {
@@ -107,7 +107,7 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
           localPath: isLocal ? message.source.path || current.form.localPath : current.form.localPath,
           localType: nextLocalType,
           s3Path: message.source.kind === "s3" ? message.source.path || current.form.s3Path : current.form.s3Path,
-          s3Profile: message.source.s3Profile || current.form.s3Profile
+          s3Profile: message.source.kind === "s3" ? message.source.s3Profile || "" : current.form.s3Profile
         },
         error: ""
       };

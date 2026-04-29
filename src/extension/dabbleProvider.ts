@@ -1,6 +1,6 @@
 import path from "path";
 import * as vscode from "vscode";
-import type { ExtensionToWebviewMessage, SourceDescriptor, ViewMode } from "../shared/protocol";
+import { createEmptyPayload, type ExtensionToWebviewMessage, type SourceDescriptor, type ViewMode } from "../shared/protocol";
 import { DuckDBService, QuerySession } from "./duckdbService";
 import { DEFAULT_PREVIEW_LIMIT, inferKindFromPath, normalizeIncomingSource, normalizePreviewLimit } from "./sourceUtils";
 import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
@@ -98,7 +98,7 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
         path: "s3://acme-lake/orders/year=2026/month=04/",
         selectedTable: null,
         selectedColumn: null,
-        s3Profile: "default"
+        s3Profile: null
       },
       previewLimit: getPreviewLimit()
     });
@@ -167,6 +167,10 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
   ): Promise<void> {
     switch (message.type) {
       case "ready":
+        if (controller.state.mode === "connect") {
+          await this.showConnectPanel(panel, controller);
+          return;
+        }
         await this.refreshPanel(panel, controller);
         return;
       case "runQuery":
@@ -262,6 +266,18 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
       default:
         return;
     }
+  }
+
+  private async showConnectPanel(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {
+    await this.disposeQuerySession(controller);
+    await this.postMessage(panel, {
+      type: "sourceData",
+      mode: controller.state.mode,
+      previewLimit: controller.state.previewLimit,
+      source: controller.state.source,
+      payload: createEmptyPayload()
+    });
+    await this.postMessage(panel, { type: "loading", loading: false });
   }
 
   private async refreshPanel(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {

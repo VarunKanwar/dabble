@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { DuckDBInstance } from "@duckdb/node-api";
-import { DuckDBService } from "../extension/duckdbService";
+import { buildS3SecretSql, DuckDBService } from "../extension/duckdbService";
 
 // __dirname resolves to dist/extension/test at runtime; fixtures live in src/test/fixtures
 const fixtures = join(__dirname, "../../../src/test/fixtures");
@@ -63,6 +63,22 @@ async function createUniqueNumericParquet(rowCount: number): Promise<{ path: str
     cleanup: () => rmSync(directory, { recursive: true, force: true })
   };
 }
+
+test("buildS3SecretSql uses the default DuckDB credential chain when no profile is provided", () => {
+  const sql = buildS3SecretSql(null);
+
+  assert.match(sql, /PROVIDER credential_chain/);
+  assert.doesNotMatch(sql, /PROFILE/);
+  assert.doesNotMatch(sql, /CHAIN config/);
+});
+
+test("buildS3SecretSql targets a named AWS profile when one is provided", () => {
+  const sql = buildS3SecretSql("prod'o1");
+
+  assert.match(sql, /PROVIDER credential_chain/);
+  assert.match(sql, /CHAIN config/);
+  assert.match(sql, /PROFILE 'prod''o1'/);
+});
 
 // --- loadSource: parquet ---
 

@@ -24,6 +24,16 @@ test("normalizeIncomingSource keeps S3 sources remote", () => {
   });
 });
 
+test("normalizeIncomingSource treats a blank S3 profile as automatic credentials", () => {
+  assert.deepEqual(normalizeIncomingSource({ path: "s3://bucket/path", s3Profile: "   " }), {
+    kind: "s3",
+    path: "s3://bucket/path",
+    selectedTable: null,
+    selectedColumn: null,
+    s3Profile: null
+  });
+});
+
 test("normalizeIncomingSource infers local kinds and initializes optional state", () => {
   assert.deepEqual(normalizeIncomingSource({ path: "/tmp/local.duckdb" }), {
     kind: "duckdb",

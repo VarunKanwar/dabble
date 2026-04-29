@@ -164,16 +164,10 @@ export class DuckDBService {
     }
     if (source.kind === "s3") {
       await loadExtension(connection, "httpfs");
-      if (source.s3Profile) {
-        const profile = escapeLiteral(source.s3Profile);
-        await connection.run(`
-          CREATE OR REPLACE SECRET dabble_s3_secret (
-            TYPE s3,
-            PROVIDER credential_chain,
-            CHAIN config,
-            PROFILE '${profile}'
-          )
-        `);
+      try {
+        await connection.run(buildS3SecretSql(source.s3Profile));
+      } catch (error) {
+        throw wrapS3PreparationError(error, source.s3Profile);
       }
     }
   }
@@ -299,7 +293,7 @@ export class DuckDBService {
         tables: ["remote_dataset"],
         title: stripTrailingSlash(source.path),
         description: "The same summary flow, entered via connect source.",
-        tree: ["remote", "main", "remote_dataset", source.s3Profile ? `profile ${source.s3Profile}` : "default credentials"],
+        tree: ["remote", "main", "remote_dataset", describeS3CredentialMode(source.s3Profile)],
         diagnostics: []
       };
     }
@@ -636,6 +630,40 @@ async function executeReadonlyQuery(connection: DuckDBConnection, sql: string): 
     loadedRowCount: rows.length,
     done: true
   };
+}
+
+export function buildS3SecretSql(profile: string | null): string {
+  if (profile) {
+    return `
+      CREATE OR REPLACE SECRET dabble_s3_secret (
+        TYPE s3,
+        PROVIDER credential_chain,
+        CHAIN config,
+        PROFILE '${escapeLiteral(profile)}'
+      )
+    `;
+  }
+
+  return `
+    CREATE OR REPLACE SECRET dabble_s3_secret (
+      TYPE s3,
+      PROVIDER credential_chain
+    )
+  `;
+}
+
+function describeS3CredentialMode(profile: string | null): string {
+  return profile ? `profile ${profile}` : "automatic credentials";
+}
+
+function describeS3CredentialSource(profile: string | null): string {
+  return profile ? `AWS profile "${profile}"` : "automatic AWS credentials on the workspace host";
+}
+
+function wrapS3PreparationError(error: unknown, profile: string | null): Error {
+  const prefix = `Unable to prepare S3 access using ${describeS3CredentialSource(profile)}.`;
+  const detail = error instanceof Error ? error.message : String(error ?? "");
+  return detail ? new Error(`${prefix} ${detail}`) : new Error(prefix);
 }
 
 function buildRelationSql(source: SourceDescriptor): string {
