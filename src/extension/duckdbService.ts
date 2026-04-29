@@ -34,6 +34,12 @@ interface PreviewData {
   rows: string[][];
 }
 
+interface ColumnMetric {
+  distinctCount: number;
+  nullCount: number;
+  totalCount: number;
+}
+
 export class DuckDBService {
   private instancePromise: Promise<DuckDBInstance> | null = null;
 
@@ -45,10 +51,11 @@ export class DuckDBService {
       const previewLimit = normalizePreviewLimit(options.previewLimit);
       const schema = await this.describeRelation(connection);
       const summaryRows = await this.summarizeRelation(connection);
+      const columnMetrics = await this.buildColumnMetrics(connection, schema);
       const preview = await this.previewRelation(connection, previewLimit);
       const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
       const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
-      const explorer = await this.buildExplorer(connection, selectedColumn, schema, summaryRows);
+      const explorer = await this.buildExplorer(connection, selectedColumn, schema);
       const editorQuery = buildDefaultQuery();
       const queryResult = await executeReadonlyQuery(connection, editorQuery);
 
@@ -65,7 +72,7 @@ export class DuckDBService {
           stats,
           tree: context.tree,
           tables: context.tables,
-          columns: buildColumns(summaryRows),
+          columns: buildColumns(summaryRows, columnMetrics),
           rowCountLabel: extractStat(stats, "Rows") || extractStat(stats, "Objects") || "",
           summaryHeaders: ["Column", "Type", "Null %", "Summary"],
           summaryRows: buildSummaryTableRows(summaryRows),
@@ -404,8 +411,7 @@ export class DuckDBService {
   private async buildExplorer(
     connection: DuckDBConnection,
     selectedColumn: string | null,
-    schema: QueryRow[],
-    summaryRows: QueryRow[]
+    schema: QueryRow[]
   ): Promise<ExplorerPayload> {
     const columnSchema =
       schema.find((column) => String(column.column_name ?? "") === selectedColumn) ??
@@ -415,47 +421,15 @@ export class DuckDBService {
     }
 
     const effectiveColumn = String(columnSchema.column_name ?? "");
-    const summary =
-      summaryRows.find((row) => String(row.column_name ?? "") === effectiveColumn) ??
-      {};
     const columnType = String(columnSchema.column_type ?? "");
 
     if (isNumericType(columnType)) {
-      const statsRows = await queryRows<{
-        avg_value?: number;
-        median_value?: number;
-        p95_value?: number;
-        null_count?: number;
-      }>(
-        connection,
-        `
-          SELECT
-            avg(${quoteIdentifier(effectiveColumn)})::DOUBLE AS avg_value,
-            approx_quantile(${quoteIdentifier(effectiveColumn)}, 0.5)::DOUBLE AS median_value,
-            approx_quantile(${quoteIdentifier(effectiveColumn)}, 0.95)::DOUBLE AS p95_value,
-            count(*) FILTER (WHERE ${quoteIdentifier(effectiveColumn)} IS NULL)::BIGINT AS null_count
-          FROM ${DEFAULT_TABLE_ALIAS}
-        `
-      );
       const histogram = await numericHistogram(connection, effectiveColumn);
-      const stats = statsRows[0] ?? {};
       return {
         title: effectiveColumn,
         type: columnType,
         kind: "numeric",
-        chips: [
-          `avg ${formatNumber(stats.avg_value)}`,
-          `median ${formatNumber(stats.median_value)}`,
-          `p95 ${formatNumber(stats.p95_value)}`,
-          `null ${formatNumber(stats.null_count)}`
-        ],
-        bars: histogram.map((item) => [item.label, item.percent]),
         distributionRows: histogram,
-        details: [
-          ["Min / Max", `${stringValue(summary.min)} to ${stringValue(summary.max)}`],
-          ["Quartiles", `${stringValue(summary.q25)} / ${stringValue(summary.q50)} / ${stringValue(summary.q75)}`],
-          ["Approx distinct", stringValue(summary.approx_unique)]
-        ],
         sql: `SELECT histogram(${quoteIdentifier(effectiveColumn)}) FROM ${DEFAULT_TABLE_ALIAS};`
       };
     }
@@ -465,16 +439,51 @@ export class DuckDBService {
       title: effectiveColumn,
       type: columnType,
       kind: "categorical",
-      chips: topValues.slice(0, 4).map((item) => `${item.label} ${formatNumber(item.value)}`),
-      bars: topValues.map((item) => [item.label, item.percent]),
       distributionRows: topValues,
-      details: [
-        ["Null %", formatNullPercentage(summary.null_percentage)],
-        ["Approx distinct", stringValue(summary.approx_unique)],
-        ["Most common", topValues.length > 0 ? topValues[0].label : "No values"]
-      ],
       sql: `SELECT ${quoteIdentifier(effectiveColumn)}, count(*) FROM ${DEFAULT_TABLE_ALIAS} GROUP BY 1 ORDER BY 2 DESC LIMIT 6;`
     };
+  }
+
+  private async buildColumnMetrics(
+    connection: DuckDBConnection,
+    schema: QueryRow[]
+  ): Promise<Map<string, ColumnMetric>> {
+    const columnNames = schema
+      .map((column) => String(column.column_name ?? ""))
+      .filter(Boolean);
+
+    if (!columnNames.length) {
+      return new Map();
+    }
+
+    const selectExpressions = ["count(*)::BIGINT AS total_rows"];
+    for (const [index, columnName] of columnNames.entries()) {
+      const column = quoteIdentifier(columnName);
+      selectExpressions.push(`count(DISTINCT ${column})::BIGINT AS column_${index}_distinct`);
+      selectExpressions.push(`count(*) FILTER (WHERE ${column} IS NULL)::BIGINT AS column_${index}_nulls`);
+    }
+
+    const rows = await queryRows<QueryRow>(
+      connection,
+      `
+        SELECT
+          ${selectExpressions.join(",\n          ")}
+        FROM ${DEFAULT_TABLE_ALIAS}
+      `
+    );
+
+    const row = rows[0] ?? {};
+    const totalCount = Number(row.total_rows) || 0;
+    return new Map(
+      columnNames.map((columnName, index) => [
+        columnName,
+        {
+          distinctCount: Number(row[`column_${index}_distinct`]) || 0,
+          nullCount: Number(row[`column_${index}_nulls`]) || 0,
+          totalCount
+        }
+      ])
+    );
   }
 
   private async withConnection<T>(work: (connection: DuckDBConnection) => Promise<T>): Promise<T> {
@@ -663,45 +672,45 @@ function buildSummaryTableRows(summaryRows: QueryRow[]): string[][] {
   return summaryRows.map((row) => [
     stringValue(row.column_name),
     stringValue(row.column_type),
-    stringValue(row.null_percentage),
+    formatNullPercentage(row.null_percentage),
     summarySummary(row)
   ]);
 }
 
-function buildColumns(summaryRows: QueryRow[]): ColumnSummary[] {
+function buildColumns(summaryRows: QueryRow[], columnMetrics: Map<string, ColumnMetric>): ColumnSummary[] {
   return summaryRows.map((row) => ({
     name: stringValue(row.column_name),
     type: stringValue(row.column_type),
-    approxDistinct: stringValue(row.approx_unique) || "0",
-    nullPercentage: formatNullPercentage(row.null_percentage),
-    nullDisplay: displayNullValue(row),
-    distinctDisplay: displayDistinctValue(row),
-    summary: summarySummary(row)
+    distinctCount: formatNumber(columnMetrics.get(stringValue(row.column_name))?.distinctCount),
+    nullPercentage: formatNullPercentageFromMetric(columnMetrics.get(stringValue(row.column_name))),
+    nullDisplay: displayNullValue(columnMetrics.get(stringValue(row.column_name))),
+    distinctDisplay: displayDistinctValue(columnMetrics.get(stringValue(row.column_name))),
+    summary: summarySummary(row, columnMetrics.get(stringValue(row.column_name)))
   }));
 }
 
-function summarySummary(row: QueryRow): string {
+function summarySummary(row: QueryRow, metric?: ColumnMetric): string {
   if (row.avg != null && row.avg !== "") {
     return `avg ${stringValue(row.avg)}, q50 ${stringValue(row.q50)}`;
   }
   if (row.min != null || row.max != null) {
     return `${stringValue(row.min)} to ${stringValue(row.max)}`;
   }
-  return `${stringValue(row.approx_unique)} distinct`;
-}
-
-function displayDistinctValue(row: QueryRow): string {
-  if (formatNullPercentage(row.null_percentage) === "100%") {
+  if (!metric || metric.totalCount === 0) {
     return "no data";
   }
-  if (row.approx_unique == null || row.approx_unique === "") {
-    return "no data";
-  }
-  return stringValue(row.approx_unique);
+  return `${formatNumber(metric.distinctCount)} distinct`;
 }
 
-function displayNullValue(row: QueryRow): string {
-  const formatted = formatNullPercentage(row.null_percentage);
+function displayDistinctValue(metric?: ColumnMetric): string {
+  if (!metric || metric.totalCount === 0 || metric.nullCount === metric.totalCount) {
+    return "no data";
+  }
+  return formatNumber(metric.distinctCount);
+}
+
+function displayNullValue(metric?: ColumnMetric): string {
+  const formatted = formatNullPercentageFromMetric(metric);
   if (!formatted) {
     return "–";
   }
@@ -726,6 +735,20 @@ function formatNullPercentage(value: unknown): string {
     return "0%";
   }
   return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(rounded)}%`;
+}
+
+function formatNullPercentageFromMetric(metric?: ColumnMetric): string {
+  if (!metric || metric.totalCount <= 0) {
+    return "";
+  }
+  return formatNullPercentage((metric.nullCount / metric.totalCount) * 100);
+}
+
+function formatNullDetail(metric?: ColumnMetric): string {
+  if (!metric || metric.totalCount <= 0) {
+    return "0";
+  }
+  return `${formatNumber(metric.nullCount)} (${formatNullPercentageFromMetric(metric) || "0%"})`;
 }
 
 function pickSelectedColumn(schema: QueryRow[], preferred: string | null): string | null {
@@ -831,7 +854,7 @@ function isNumericType(type: string): boolean {
 
 async function numericHistogram(connection: DuckDBConnection, columnName: string): Promise<DistributionRow[]> {
   const column = quoteIdentifier(columnName);
-  const rows = await queryRows<{ bucket?: number; bucket_count?: number }>(
+  const rows = await queryRows<{ bucket?: number; bucket_count?: number; min_value?: number; max_value?: number }>(
     connection,
     `
       WITH bounds AS (
@@ -856,8 +879,13 @@ async function numericHistogram(connection: DuckDBConnection, columnName: string
         FROM ${DEFAULT_TABLE_ALIAS}, bounds
         WHERE ${column} IS NOT NULL
       )
-      SELECT bucket, count(*)::BIGINT AS bucket_count
+      SELECT
+        bucket,
+        count(*)::BIGINT AS bucket_count,
+        max(bounds.min_value)::DOUBLE AS min_value,
+        max(bounds.max_value)::DOUBLE AS max_value
       FROM bucketed
+      CROSS JOIN bounds
       GROUP BY 1
       ORDER BY 1
     `
@@ -865,9 +893,9 @@ async function numericHistogram(connection: DuckDBConnection, columnName: string
 
   const total = rows.reduce((sum, row) => sum + (Number(row.bucket_count) || 0), 0) || 1;
   return rows.map((row) => ({
-    label: String(row.bucket ?? ""),
+    label: histogramBucketLabel(row),
     value: Number(row.bucket_count) || 0,
-    percent: Math.max(8, Math.round(((Number(row.bucket_count) || 0) / total) * 100))
+    percent: ((Number(row.bucket_count) || 0) / total) * 100
   }));
 }
 
@@ -886,12 +914,12 @@ async function topValuesQuery(connection: DuckDBConnection, columnName: string):
         LIMIT 6
       ),
       totals AS (
-        SELECT greatest(sum(value), 1) AS total_value FROM top_values
+        SELECT greatest(count(*), 1)::BIGINT AS total_value FROM ${DEFAULT_TABLE_ALIAS}
       )
       SELECT
         label,
         value,
-        CAST(round((value::DOUBLE / totals.total_value) * 100) AS INTEGER) AS percent
+        (value::DOUBLE / totals.total_value) * 100 AS percent
       FROM top_values, totals
       ORDER BY value DESC, label
     `
@@ -900,8 +928,28 @@ async function topValuesQuery(connection: DuckDBConnection, columnName: string):
   return rows.map((row) => ({
     label: String(row.label ?? ""),
     value: Number(row.value) || 0,
-    percent: Math.max(8, Number(row.percent) || 0)
+    percent: Number(row.percent) || 0
   }));
+}
+
+function histogramBucketLabel(row: { bucket?: number; min_value?: number; max_value?: number }): string {
+  const minValue = Number(row.min_value);
+  const maxValue = Number(row.max_value);
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return String(row.bucket ?? "");
+  }
+  if (minValue === maxValue) {
+    return formatNumber(minValue);
+  }
+
+  const bucket = Number(row.bucket) || 0;
+  const bucketCount = 6;
+  const rangeSize = maxValue - minValue;
+  const start = minValue + (bucket / bucketCount) * rangeSize;
+  const end = bucket === bucketCount - 1
+    ? maxValue
+    : minValue + ((bucket + 1) / bucketCount) * rangeSize;
+  return `${formatNumber(start)} to ${formatNumber(end)}`;
 }
 
 function createDatabaseAlias(): string {

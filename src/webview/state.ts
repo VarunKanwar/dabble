@@ -22,6 +22,9 @@ export interface AppState {
   tab: MainTab;
   payload: SourcePayload;
   source: SourceDescriptor | null;
+  expandedColumnName: string | null;
+  openingColumnName: string | null;
+  closingColumnName: string | null;
   querySql: string;
   queryResult: QueryResult;
   loading: boolean;
@@ -40,6 +43,9 @@ export function createInitialState(persisted: PersistedUiState = {}): AppState {
     tab: "preview",
     payload: createEmptyPayload(),
     source: null,
+    expandedColumnName: null,
+    openingColumnName: null,
+    closingColumnName: null,
     querySql: "",
     queryResult: emptyQueryResult(),
     loading: true,
@@ -72,6 +78,9 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
         mode: message.mode,
         tab: nextTab,
         source: message.source,
+        expandedColumnName: message.source.selectedColumn,
+        openingColumnName: message.source.selectedColumn === current.expandedColumnName ? null : message.source.selectedColumn,
+        closingColumnName: null,
         payload: message.payload,
         querySql: message.payload.sql || "",
         queryResult: {
@@ -140,6 +149,18 @@ export function setTab(state: AppState, tab: MainTab): AppState {
 
 export function setQuerySql(state: AppState, querySql: string): AppState {
   return { ...state, querySql };
+}
+
+export function setExpandedColumn(state: AppState, expandedColumnName: string | null): AppState {
+  return { ...state, expandedColumnName, openingColumnName: null, closingColumnName: null };
+}
+
+export function setClosingColumn(state: AppState, closingColumnName: string | null): AppState {
+  return { ...state, openingColumnName: null, closingColumnName };
+}
+
+export function setOpeningColumn(state: AppState, openingColumnName: string | null): AppState {
+  return { ...state, openingColumnName, closingColumnName: null };
 }
 
 export function updateFormField(state: AppState, field: keyof ConnectFormState, value: string): AppState {

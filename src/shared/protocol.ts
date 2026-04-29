@@ -22,7 +22,7 @@ export type StatEntry = [label: string, value: string];
 export interface ColumnSummary {
   name: string;
   type: string;
-  approxDistinct: string;
+  distinctCount: string;
   nullPercentage: string;
   nullDisplay: string;
   distinctDisplay: string;
@@ -39,10 +39,7 @@ export interface ExplorerPayload {
   title: string;
   type: string;
   kind: "numeric" | "categorical";
-  chips: string[];
-  bars: Array<[label: string, percent: number]>;
   distributionRows: DistributionRow[];
-  details: StatEntry[];
   sql: string;
 }
 
@@ -117,10 +114,7 @@ export function createEmptyExplorer(): ExplorerPayload {
     title: "",
     type: "",
     kind: "categorical",
-    chips: [],
-    bars: [],
     distributionRows: [],
-    details: [],
     sql: ""
   };
 }

@@ -1,9 +1,8 @@
 import type { AppState } from "./state.js";
-import { escapeAttr, escapeHtml, formatDisplayNumber, formatPercent, lastSegment, numericValue, resultMeta, typeGlyph } from "./format.js";
+import { escapeAttr, escapeHtml, formatDisplayNumber, formatPercent, lastSegment, resultMeta, typeGlyph } from "./format.js";
 
 export function renderApp(state: AppState): string {
   const payload = state.payload;
-  const queryResult = state.queryResult;
 
   return `
     <div
@@ -152,7 +151,6 @@ function renderObjectExplorer(state: AppState): string {
   const { payload, source } = state;
   const columns = payload.columns || [];
   const selectedName = source?.selectedColumn;
-  const maxDistinct = Math.max(...columns.map((column) => numericValue(column.approxDistinct)), 1);
   const explorer = payload.explorer;
 
   return `
@@ -166,43 +164,82 @@ function renderObjectExplorer(state: AppState): string {
         </div>
       </div>
 
-      <div class="column-list">
-        ${columns
-          .map((column) => {
-            const selected = selectedName === column.name;
-            const width = Math.max(10, Math.round((numericValue(column.approxDistinct) / maxDistinct) * 100));
-            return `
-              <button class="column-row ${selected ? "active" : ""}" data-column-name="${escapeAttr(column.name)}">
-                <div class="column-type">${escapeHtml(typeGlyph(column.type))}</div>
-                <div class="column-name">${escapeHtml(column.name)}</div>
-                <div class="column-distinct">
-                  <div class="distinct-track">
-                    <div class="distinct-fill" style="width:${width}%"></div>
-                    <span class="${column.distinctDisplay === "no data" ? "muted-italic" : ""}">${escapeHtml(column.distinctDisplay)}</span>
-                  </div>
-                </div>
-                <div class="column-null">${escapeHtml(column.nullDisplay)}</div>
-              </button>
-            `;
-          })
-          .join("")}
+      <div class="column-list-head">
+        <span></span>
+        <span>Column</span>
+        <span title="Unique values">Unique</span>
+        <span title="Null percentage">Null %</span>
       </div>
 
-      <div class="distribution-panel">
-        <div class="distribution-title">
-          <span class="column-type selected">${escapeHtml(typeGlyph(explorer.type || ""))}</span>
-          <strong>${escapeHtml(explorer.title || "")}</strong>
-        </div>
-        <div class="distribution-list">
-          ${renderDistribution(state)}
-        </div>
+      <div class="column-list">
+        ${columns
+          .map((column) =>
+            renderColumnItem(
+              column,
+              selectedName === column.name,
+              state.expandedColumnName === column.name,
+              state.openingColumnName === column.name,
+              state.closingColumnName === column.name,
+              explorer
+            )
+          )
+          .join("")}
       </div>
     </section>
   `;
 }
 
-function renderDistribution(state: AppState): string {
-  const rows = state.payload.explorer.distributionRows || [];
+function renderColumnItem(
+  column: AppState["payload"]["columns"][number],
+  selected: boolean,
+  expanded: boolean,
+  opening: boolean,
+  closing: boolean,
+  explorer: AppState["payload"]["explorer"]
+): string {
+  const distinctTitle = column.distinctDisplay === "no data"
+    ? "Unique values: no data"
+    : `Unique values: ${column.distinctCount}`;
+  const nullTitle = column.nullDisplay === "–"
+    ? "Null percentage: 0%"
+    : `Null percentage: ${column.nullDisplay}`;
+  const showDetail = (expanded || opening || closing) && selected;
+
+  return `
+    <div class="column-item ${expanded ? "expanded" : ""} ${opening ? "opening" : ""} ${closing ? "closing" : ""}">
+      <button
+        class="column-row ${expanded || opening || closing ? "active" : ""}"
+        data-column-name="${escapeAttr(column.name)}"
+        aria-expanded="${showDetail ? "true" : "false"}"
+      >
+        <div class="column-type">${escapeHtml(typeGlyph(column.type))}</div>
+        <div class="column-name">${escapeHtml(column.name)}</div>
+        <div class="column-metric ${column.distinctDisplay === "no data" ? "muted-italic" : ""}" title="${escapeAttr(distinctTitle)}">
+          ${escapeHtml(column.distinctDisplay)}
+        </div>
+        <div class="column-metric column-null" title="${escapeAttr(nullTitle)}">${escapeHtml(column.nullDisplay)}</div>
+      </button>
+      ${showDetail ? renderExpandedColumn(explorer) : ""}
+    </div>
+  `;
+}
+
+function renderExpandedColumn(explorer: AppState["payload"]["explorer"]): string {
+  return `
+    <div class="column-detail ${explorer.kind === "numeric" ? "numeric" : "categorical"}">
+      <div class="column-detail-head">
+        <span class="column-type selected">${escapeHtml(typeGlyph(explorer.type || ""))}</span>
+        <span class="column-detail-type">${escapeHtml(explorer.type || "")}</span>
+      </div>
+      <div class="column-detail-preview-title">${escapeHtml(explorer.kind === "numeric" ? "Distribution" : "Top values")}</div>
+      ${explorer.kind === "numeric"
+        ? `<div class="distribution-list">${renderNumericDistribution(explorer.distributionRows || [])}</div>`
+        : `<div class="categorical-list">${renderCategoricalDistribution(explorer.distributionRows || [])}</div>`}
+    </div>
+  `;
+}
+
+function renderNumericDistribution(rows: AppState["payload"]["explorer"]["distributionRows"]): string {
   if (!rows.length) {
     return '<div class="distribution-empty">No distribution data</div>';
   }
@@ -213,7 +250,7 @@ function renderDistribution(state: AppState): string {
         <div class="distribution-row">
           <div class="distribution-label-wrap">
             <div class="distribution-bar-wrap">
-              <div class="distribution-bar" style="width:${Number(row.percent) || 0}%"></div>
+              <div class="distribution-bar" style="width:${distributionBarWidth(row.percent)}%"></div>
             </div>
             <span class="distribution-label">${escapeHtml(row.label)}</span>
           </div>
@@ -223,6 +260,32 @@ function renderDistribution(state: AppState): string {
       `
     )
     .join("");
+}
+
+function renderCategoricalDistribution(rows: AppState["payload"]["explorer"]["distributionRows"]): string {
+  if (!rows.length) {
+    return '<div class="distribution-empty">No top values</div>';
+  }
+
+  return rows
+    .map(
+      (row) => `
+        <div class="categorical-row">
+          <span class="categorical-label" title="${escapeAttr(row.label)}">${escapeHtml(row.label)}</span>
+          <span class="categorical-count">${escapeHtml(formatDisplayNumber(row.value))}</span>
+          <span class="categorical-percent">${escapeHtml(formatPercent(row.percent))}</span>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function distributionBarWidth(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(numeric, 3));
 }
 
 function renderConnectMode(state: AppState): string {

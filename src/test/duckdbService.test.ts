@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DuckDBInstance } from "@duckdb/node-api";
 import { DuckDBService } from "../extension/duckdbService";
 
 // __dirname resolves to dist/extension/test at runtime; fixtures live in src/test/fixtures
@@ -11,6 +14,30 @@ const duckdbPath = join(fixtures, "sample.duckdb");
 
 function source(kind: "parquet" | "sqlite" | "duckdb" | "dataset", path: string) {
   return { kind, path, selectedTable: null, selectedColumn: null, s3Profile: null } as const;
+}
+
+async function createUniqueStringParquet(rowCount: number): Promise<{ path: string; cleanup: () => void }> {
+  const directory = mkdtempSync(join(tmpdir(), "dabble-distinct-"));
+  const parquetPath = join(directory, "distinct-source-report.parquet");
+  const instance = await DuckDBInstance.create(":memory:");
+  const connection = await instance.connect();
+
+  try {
+    await connection.run(`
+      COPY (
+        SELECT concat('dr_', i::VARCHAR) AS source_report_id
+        FROM range(${rowCount}) AS t(i)
+      ) TO '${parquetPath.replace(/'/g, "''")}' (FORMAT PARQUET)
+    `);
+  } finally {
+    connection.closeSync();
+    instance.closeSync();
+  }
+
+  return {
+    path: parquetPath,
+    cleanup: () => rmSync(directory, { recursive: true, force: true })
+  };
 }
 
 // --- loadSource: parquet ---
@@ -42,6 +69,28 @@ test("loadSource parquet respects previewLimit", async () => {
 
   assert.equal(result.payload.previewRows.length, 2);
   assert.ok(result.payload.previewText.includes("2"));
+});
+
+test("loadSource parquet uses exact distinct counts and full-column percentages for categorical explorer", async () => {
+  const generated = await createUniqueStringParquet(1000);
+
+  try {
+    const svc = new DuckDBService();
+    const result = await svc.loadSource(source("parquet", generated.path));
+    const column = result.payload.columns.find((entry) => entry.name === "source_report_id");
+
+    assert.equal(result.source.selectedColumn, "source_report_id");
+    assert.ok(column, "expected generated column to be present");
+    assert.equal(column?.distinctCount, "1,000");
+    assert.equal(column?.distinctDisplay, "1,000");
+    assert.equal(result.payload.explorer.distributionRows.length, 6);
+    for (const row of result.payload.explorer.distributionRows) {
+      assert.equal(row.value, 1);
+      assert.ok(Math.abs(row.percent - 0.1) < 0.000001);
+    }
+  } finally {
+    generated.cleanup();
+  }
 });
 
 // --- loadSource: sqlite ---

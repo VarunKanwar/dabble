@@ -5,6 +5,9 @@ import {
   clampNumber,
   createInitialState,
   isLocalSourceKind,
+  setClosingColumn,
+  setExpandedColumn,
+  setOpeningColumn,
   setMode,
   setQuerySql,
   setTab,
@@ -31,6 +34,8 @@ export function bootDabble(): void {
 
 class DabbleApp {
   private state: AppState;
+  private columnAnimationTimer: number | null = null;
+  private columnAnimationTarget: string | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -81,9 +86,15 @@ class DabbleApp {
 
     const columnButton = target.closest<HTMLElement>("[data-column-name]");
     if (columnButton?.dataset.columnName) {
+      const columnName = columnButton.dataset.columnName;
+      if (this.state.expandedColumnName === columnName) {
+        this.animateColumnClose(columnName);
+        return;
+      }
+
       this.postMessage({
         type: "selectColumn",
-        columnName: columnButton.dataset.columnName
+        columnName
       });
       return;
     }
@@ -235,6 +246,19 @@ class DabbleApp {
 
   private render(): void {
     this.root.innerHTML = renderApp(this.state);
+    const activeAnimation = this.state.closingColumnName || this.state.openingColumnName;
+    if (activeAnimation) {
+      if (this.columnAnimationTimer == null || this.columnAnimationTarget !== activeAnimation) {
+        this.scheduleColumnAnimationClear(activeAnimation);
+      }
+      return;
+    }
+
+    if (this.columnAnimationTimer != null) {
+      window.clearTimeout(this.columnAnimationTimer);
+      this.columnAnimationTimer = null;
+      this.columnAnimationTarget = null;
+    }
   }
 
   private applyUiVariables(): void {
@@ -255,6 +279,38 @@ class DabbleApp {
 
   private postMessage(message: WebviewToExtensionMessage): void {
     this.vscode.postMessage(message);
+  }
+
+  private animateColumnClose(columnName: string): void {
+    if (this.columnAnimationTimer != null) {
+      window.clearTimeout(this.columnAnimationTimer);
+      this.columnAnimationTimer = null;
+      this.columnAnimationTarget = null;
+    }
+    this.state = setClosingColumn(this.state, columnName);
+    this.render();
+  }
+
+  private scheduleColumnAnimationClear(columnName: string): void {
+    if (this.columnAnimationTimer != null) {
+      window.clearTimeout(this.columnAnimationTimer);
+    }
+
+    this.columnAnimationTarget = columnName;
+    this.columnAnimationTimer = window.setTimeout(() => {
+      this.columnAnimationTimer = null;
+      this.columnAnimationTarget = null;
+      if (this.state.closingColumnName === columnName) {
+        this.state = setExpandedColumn(this.state, null);
+        this.render();
+        return;
+      }
+
+      if (this.state.openingColumnName === columnName) {
+        this.state = setOpeningColumn(this.state, null);
+        this.render();
+      }
+    }, 160);
   }
 }
 

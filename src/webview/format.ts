@@ -22,7 +22,16 @@ export function formatPercent(value: unknown): string {
   if (!Number.isFinite(numeric)) {
     return "";
   }
-  return `${Math.round(numeric)}%`;
+  if (numeric === 0) {
+    return "0%";
+  }
+  if (numeric < 0.1) {
+    return "<0.1%";
+  }
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: numeric < 10 ? 1 : 0,
+    minimumFractionDigits: numeric < 1 ? 1 : 0
+  }).format(numeric)}%`;
 }
 
 export function formatDisplayNumber(value: unknown): string {
