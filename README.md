@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/icon.png" alt="Dabble logo" width="180" />
+</p>
+
 # Dabble
 
 Inspect Parquet, SQLite, and DuckDB files directly in VS Code. Dabble opens data files in a readonly viewer powered by native DuckDB running in the workspace extension host — no separate server product, no hidden query rewrites, no extra services to manage.
