@@ -17,6 +17,9 @@ import { normalizePreviewLimit, normalizeSource } from "./sourceUtils";
 const DEFAULT_TABLE_ALIAS = "selected_relation";
 const EXTENSION_DIRECTORY = "/tmp/dabble-duckdb-extensions";
 const QUERY_PAGE_ROW_TARGET = 2048;
+const TOP_VALUES_ROW_LIMIT = 6;
+const NUMERIC_TOP_VALUES_DISTINCT_THRESHOLD = 12;
+const NUMERIC_HISTOGRAM_BUCKET_COUNT = 6;
 
 type QueryRow = Record<string, unknown>;
 
@@ -55,7 +58,7 @@ export class DuckDBService {
       const preview = await this.previewRelation(connection, previewLimit);
       const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
       const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
-      const explorer = await this.buildExplorer(connection, selectedColumn, schema);
+      const explorer = await this.buildExplorer(connection, selectedColumn, schema, columnMetrics);
       const editorQuery = buildDefaultQuery();
       const queryResult = await executeReadonlyQuery(connection, editorQuery);
 
@@ -411,7 +414,8 @@ export class DuckDBService {
   private async buildExplorer(
     connection: DuckDBConnection,
     selectedColumn: string | null,
-    schema: QueryRow[]
+    schema: QueryRow[],
+    columnMetrics: Map<string, ColumnMetric>
   ): Promise<ExplorerPayload> {
     const columnSchema =
       schema.find((column) => String(column.column_name ?? "") === selectedColumn) ??
@@ -422,13 +426,15 @@ export class DuckDBService {
 
     const effectiveColumn = String(columnSchema.column_name ?? "");
     const columnType = String(columnSchema.column_type ?? "");
+    const metric = columnMetrics.get(effectiveColumn);
+    const view = chooseExplorerView(columnType, metric);
 
-    if (isNumericType(columnType)) {
+    if (view === "histogram") {
       const histogram = await numericHistogram(connection, effectiveColumn);
       return {
         title: effectiveColumn,
         type: columnType,
-        kind: "numeric",
+        view: "histogram",
         distributionRows: histogram,
         sql: `SELECT histogram(${quoteIdentifier(effectiveColumn)}) FROM ${DEFAULT_TABLE_ALIAS};`
       };
@@ -438,9 +444,9 @@ export class DuckDBService {
     return {
       title: effectiveColumn,
       type: columnType,
-      kind: "categorical",
+      view: "topValues",
       distributionRows: topValues,
-      sql: `SELECT ${quoteIdentifier(effectiveColumn)}, count(*) FROM ${DEFAULT_TABLE_ALIAS} GROUP BY 1 ORDER BY 2 DESC LIMIT 6;`
+      sql: `SELECT ${quoteIdentifier(effectiveColumn)}, count(*) FROM ${DEFAULT_TABLE_ALIAS} GROUP BY 1 ORDER BY 2 DESC LIMIT ${TOP_VALUES_ROW_LIMIT};`
     };
   }
 
@@ -869,10 +875,10 @@ async function numericHistogram(connection: DuckDBConnection, columnName: string
           CASE
             WHEN bounds.max_value = bounds.min_value THEN 0
             ELSE LEAST(
-              5,
+              ${NUMERIC_HISTOGRAM_BUCKET_COUNT - 1},
               GREATEST(
                 0,
-                CAST(floor(((${column}::DOUBLE - bounds.min_value) / NULLIF(bounds.max_value - bounds.min_value, 0)) * 6) AS INTEGER)
+                CAST(floor(((${column}::DOUBLE - bounds.min_value) / NULLIF(bounds.max_value - bounds.min_value, 0)) * ${NUMERIC_HISTOGRAM_BUCKET_COUNT}) AS INTEGER)
               )
             )
           END AS bucket
@@ -911,7 +917,7 @@ async function topValuesQuery(connection: DuckDBConnection, columnName: string):
         FROM ${DEFAULT_TABLE_ALIAS}
         GROUP BY 1
         ORDER BY 2 DESC, 1
-        LIMIT 6
+        LIMIT ${TOP_VALUES_ROW_LIMIT}
       ),
       totals AS (
         SELECT greatest(count(*), 1)::BIGINT AS total_value FROM ${DEFAULT_TABLE_ALIAS}
@@ -943,13 +949,37 @@ function histogramBucketLabel(row: { bucket?: number; min_value?: number; max_va
   }
 
   const bucket = Number(row.bucket) || 0;
-  const bucketCount = 6;
+  const bucketCount = NUMERIC_HISTOGRAM_BUCKET_COUNT;
   const rangeSize = maxValue - minValue;
   const start = minValue + (bucket / bucketCount) * rangeSize;
   const end = bucket === bucketCount - 1
     ? maxValue
     : minValue + ((bucket + 1) / bucketCount) * rangeSize;
-  return `${formatNumber(start)} to ${formatNumber(end)}`;
+  const formattedStart = formatNumber(start);
+  const formattedEnd = formatNumber(end);
+  return bucket === bucketCount - 1
+    ? `[${formattedStart}, ${formattedEnd}]`
+    : `[${formattedStart}, ${formattedEnd})`;
+}
+
+function chooseExplorerView(columnType: string, metric?: ColumnMetric): ExplorerPayload["view"] {
+  if (!isNumericType(columnType)) {
+    return "topValues";
+  }
+  if (!metric || metric.totalCount <= 0) {
+    return "topValues";
+  }
+
+  const nonNullCount = Math.max(0, metric.totalCount - metric.nullCount);
+  if (nonNullCount <= 1) {
+    return "topValues";
+  }
+
+  if (metric.distinctCount <= NUMERIC_TOP_VALUES_DISTINCT_THRESHOLD) {
+    return "topValues";
+  }
+
+  return "histogram";
 }
 
 function createDatabaseAlias(): string {

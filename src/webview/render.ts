@@ -150,7 +150,12 @@ function renderQueryResultActions(state: AppState): string {
 function renderObjectExplorer(state: AppState): string {
   const { payload, source } = state;
   const columns = payload.columns || [];
-  const selectedName = source?.selectedColumn;
+  const selectedName = source?.selectedColumn || null;
+  const expandedName = state.expandedColumnName;
+  const openingName = state.openingColumnName;
+  const closingName = state.closingColumnName;
+  const activeDetailName = closingName || openingName || expandedName;
+  const showDetail = Boolean(activeDetailName && selectedName === activeDetailName);
   const explorer = payload.explorer;
 
   return `
@@ -176,26 +181,24 @@ function renderObjectExplorer(state: AppState): string {
           .map((column) =>
             renderColumnItem(
               column,
-              selectedName === column.name,
-              state.expandedColumnName === column.name,
-              state.openingColumnName === column.name,
-              state.closingColumnName === column.name,
-              explorer
+              expandedName === column.name,
+              openingName === column.name,
+              closingName === column.name
             )
           )
           .join("")}
       </div>
+
+      ${renderColumnDetailPanel(explorer, showDetail, Boolean(openingName), Boolean(closingName))}
     </section>
   `;
 }
 
 function renderColumnItem(
   column: AppState["payload"]["columns"][number],
-  selected: boolean,
   expanded: boolean,
   opening: boolean,
-  closing: boolean,
-  explorer: AppState["payload"]["explorer"]
+  closing: boolean
 ): string {
   const distinctTitle = column.distinctDisplay === "no data"
     ? "Unique values: no data"
@@ -203,14 +206,13 @@ function renderColumnItem(
   const nullTitle = column.nullDisplay === "–"
     ? "Null percentage: 0%"
     : `Null percentage: ${column.nullDisplay}`;
-  const showDetail = (expanded || opening || closing) && selected;
 
   return `
     <div class="column-item ${expanded ? "expanded" : ""} ${opening ? "opening" : ""} ${closing ? "closing" : ""}">
       <button
         class="column-row ${expanded || opening || closing ? "active" : ""}"
         data-column-name="${escapeAttr(column.name)}"
-        aria-expanded="${showDetail ? "true" : "false"}"
+        aria-expanded="${expanded || opening ? "true" : "false"}"
       >
         <div class="column-type">${escapeHtml(typeGlyph(column.type))}</div>
         <div class="column-name">${escapeHtml(column.name)}</div>
@@ -219,20 +221,43 @@ function renderColumnItem(
         </div>
         <div class="column-metric column-null" title="${escapeAttr(nullTitle)}">${escapeHtml(column.nullDisplay)}</div>
       </button>
-      ${showDetail ? renderExpandedColumn(explorer) : ""}
     </div>
   `;
 }
 
-function renderExpandedColumn(explorer: AppState["payload"]["explorer"]): string {
+function renderColumnDetailPanel(
+  explorer: AppState["payload"]["explorer"],
+  showDetail: boolean,
+  opening: boolean,
+  closing: boolean
+): string {
+  // Intent: keep the column list spatially stable while showing per-column stats.
+  // We reserve a fixed detail pane instead of inserting expandable rows inline.
+  if (!showDetail) {
+    return `
+      <section class="column-detail-panel empty" aria-live="polite">
+        <div class="column-detail-placeholder">Select a column to view stats.</div>
+      </section>
+    `;
+  }
+
   return `
-    <div class="column-detail ${explorer.kind === "numeric" ? "numeric" : "categorical"}">
+    <section class="column-detail-panel ${opening ? "opening" : ""} ${closing ? "closing" : ""}" aria-live="polite">
+      ${renderExpandedColumn(explorer)}
+    </section>
+  `;
+}
+
+function renderExpandedColumn(explorer: AppState["payload"]["explorer"]): string {
+  const histogramView = explorer.view === "histogram";
+  return `
+    <div class="column-detail ${histogramView ? "numeric" : "categorical"}">
       <div class="column-detail-head">
         <span class="column-type selected">${escapeHtml(typeGlyph(explorer.type || ""))}</span>
         <span class="column-detail-type">${escapeHtml(explorer.type || "")}</span>
       </div>
-      <div class="column-detail-preview-title">${escapeHtml(explorer.kind === "numeric" ? "Distribution" : "Top values")}</div>
-      ${explorer.kind === "numeric"
+      <div class="column-detail-preview-title">${escapeHtml(histogramView ? "Distribution (binned ranges)" : "Top values")}</div>
+      ${histogramView
         ? `<div class="distribution-list">${renderNumericDistribution(explorer.distributionRows || [])}</div>`
         : `<div class="categorical-list">${renderCategoricalDistribution(explorer.distributionRows || [])}</div>`}
     </div>

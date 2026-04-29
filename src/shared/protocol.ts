@@ -38,7 +38,7 @@ export interface DistributionRow {
 export interface ExplorerPayload {
   title: string;
   type: string;
-  kind: "numeric" | "categorical";
+  view: "histogram" | "topValues";
   distributionRows: DistributionRow[];
   sql: string;
 }
@@ -113,7 +113,7 @@ export function createEmptyExplorer(): ExplorerPayload {
   return {
     title: "",
     type: "",
-    kind: "categorical",
+    view: "topValues",
     distributionRows: [],
     sql: ""
   };

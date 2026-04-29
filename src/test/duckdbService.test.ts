@@ -40,6 +40,30 @@ async function createUniqueStringParquet(rowCount: number): Promise<{ path: stri
   };
 }
 
+async function createUniqueNumericParquet(rowCount: number): Promise<{ path: string; cleanup: () => void }> {
+  const directory = mkdtempSync(join(tmpdir(), "dabble-histogram-"));
+  const parquetPath = join(directory, "numeric-values.parquet");
+  const instance = await DuckDBInstance.create(":memory:");
+  const connection = await instance.connect();
+
+  try {
+    await connection.run(`
+      COPY (
+        SELECT i::BIGINT AS numeric_id
+        FROM range(${rowCount}) AS t(i)
+      ) TO '${parquetPath.replace(/'/g, "''")}' (FORMAT PARQUET)
+    `);
+  } finally {
+    connection.closeSync();
+    instance.closeSync();
+  }
+
+  return {
+    path: parquetPath,
+    cleanup: () => rmSync(directory, { recursive: true, force: true })
+  };
+}
+
 // --- loadSource: parquet ---
 
 test("loadSource parquet returns correct shape", async () => {
@@ -59,7 +83,7 @@ test("loadSource parquet selects a numeric column for explorer", async () => {
   const result = await svc.loadSource(source("parquet", parquetPath));
 
   assert.equal(result.source.selectedColumn, "id");
-  assert.equal(result.payload.explorer.kind, "numeric");
+  assert.equal(result.payload.explorer.view, "topValues");
   assert.equal(result.payload.explorer.title, "id");
 });
 
@@ -80,6 +104,7 @@ test("loadSource parquet uses exact distinct counts and full-column percentages 
     const column = result.payload.columns.find((entry) => entry.name === "source_report_id");
 
     assert.equal(result.source.selectedColumn, "source_report_id");
+    assert.equal(result.payload.explorer.view, "topValues");
     assert.ok(column, "expected generated column to be present");
     assert.equal(column?.distinctCount, "1,000");
     assert.equal(column?.distinctDisplay, "1,000");
@@ -88,6 +113,22 @@ test("loadSource parquet uses exact distinct counts and full-column percentages 
       assert.equal(row.value, 1);
       assert.ok(Math.abs(row.percent - 0.1) < 0.000001);
     }
+  } finally {
+    generated.cleanup();
+  }
+});
+
+test("loadSource parquet uses histogram view for high-cardinality numeric columns", async () => {
+  const generated = await createUniqueNumericParquet(1000);
+
+  try {
+    const svc = new DuckDBService();
+    const result = await svc.loadSource(source("parquet", generated.path));
+
+    assert.equal(result.source.selectedColumn, "numeric_id");
+    assert.equal(result.payload.explorer.view, "histogram");
+    assert.equal(result.payload.explorer.distributionRows.length, 6);
+    assert.ok(result.payload.explorer.distributionRows[0]?.label.includes("["));
   } finally {
     generated.cleanup();
   }

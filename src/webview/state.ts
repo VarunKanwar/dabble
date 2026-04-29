@@ -68,6 +68,18 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
     case "sourceData": {
       const nextTab = message.mode === "clicked" && current.tab !== "query" ? "preview" : current.tab;
       const isLocal = isLocalSource(message.source);
+      const sameSelectedTable =
+        current.source?.kind === message.source.kind &&
+        current.source?.path === message.source.path &&
+        current.source?.selectedTable === message.source.selectedTable;
+      // Keep stats collapsed by default on initial/table loads to preserve spatial stability.
+      // Only expand when the user selects another column within the same table context.
+      const shouldExpandSelectedColumn =
+        message.mode === "clicked" &&
+        sameSelectedTable &&
+        Boolean(message.source.selectedColumn) &&
+        message.source.selectedColumn !== current.expandedColumnName;
+      const nextExpandedColumn = shouldExpandSelectedColumn ? message.source.selectedColumn : null;
       const nextLocalType = message.source.kind === "dataset"
         ? "dataset"
         : isLocalSourceKind(message.source.kind)
@@ -78,8 +90,8 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
         mode: message.mode,
         tab: nextTab,
         source: message.source,
-        expandedColumnName: message.source.selectedColumn,
-        openingColumnName: message.source.selectedColumn === current.expandedColumnName ? null : message.source.selectedColumn,
+        expandedColumnName: nextExpandedColumn,
+        openingColumnName: nextExpandedColumn,
         closingColumnName: null,
         payload: message.payload,
         querySql: message.payload.sql || "",

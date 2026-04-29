@@ -14,7 +14,7 @@ Inspect Parquet, SQLite, and DuckDB files directly in VS Code. Dabble opens data
 
 ## Features
 
-**Preview** shows schema, summary statistics, and sample rows for the selected table. Column exploration gives you value distributions (histograms for numeric columns, top values for categorical ones).
+**Preview** shows schema, summary statistics, and sample rows for the selected table. Column exploration uses a stable list/details layout: the column list stays fixed while a dedicated stats pane updates for the expanded column. Numeric columns use top values for low-cardinality data and binned distributions for higher-cardinality data.
 
 **Query** lets you write and run readonly SQL against the opened source. Results stream back in pages — large result sets won't lock up the editor.
 
