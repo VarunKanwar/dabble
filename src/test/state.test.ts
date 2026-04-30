@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createEmptyPayload } from "../shared/protocol";
-import { applyExtensionMessage, createInitialState, setExpandedColumn, setOpeningColumn } from "../webview/state";
+import {
+  applyExtensionMessage,
+  closeCellViewer,
+  createInitialState,
+  openCellViewer,
+  setExpandedColumn,
+  setOpeningColumn
+} from "../webview/state";
 
 test("createInitialState leaves the S3 profile blank for automatic credentials", () => {
   const state = createInitialState();
@@ -104,4 +111,22 @@ test("sourceData sets localType to jsonl for JSONL sources", () => {
   });
 
   assert.equal(next.form.localType, "jsonl");
+});
+
+test("cell viewer opens and closes with explicit state transitions", () => {
+  const initial = createInitialState();
+  const opened = openCellViewer(initial, {
+    table: "preview",
+    columnName: "message",
+    rowNumber: 2,
+    value: "line 1\nline 2"
+  });
+
+  assert.equal(opened.cellViewer.isOpen, true);
+  assert.equal(opened.cellViewer.columnName, "message");
+  assert.equal(opened.cellViewer.rowNumber, 2);
+  assert.equal(opened.cellViewer.value, "line 1\nline 2");
+
+  const closed = closeCellViewer(opened);
+  assert.equal(closed.cellViewer.isOpen, false);
 });

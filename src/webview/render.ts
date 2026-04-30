@@ -1,4 +1,4 @@
-import type { AppState } from "./state.js";
+import type { AppState, CellViewerTable } from "./state.js";
 import { escapeAttr, escapeHtml, formatDisplayNumber, formatPercent, lastSegment, resultMeta, typeGlyph } from "./format.js";
 
 export function renderApp(state: AppState): string {
@@ -62,6 +62,7 @@ export function renderApp(state: AppState): string {
           ${state.error ? `<div class="status-banner">${escapeHtml(state.error)}</div>` : ""}
         </main>
       </div>
+      ${renderCellViewer(state)}
     </div>
   `;
 }
@@ -88,7 +89,14 @@ function renderClickedMode(state: AppState): string {
               </div>
             </div>
           </div>
-          <div class="table-wrap">${renderTable(payload.previewHeaders || [], payload.previewRows || [])}</div>
+          <div class="table-wrap">
+            ${renderTable(
+              payload.previewHeaders || [],
+              payload.previewRows || [],
+              "preview",
+              buildPreviewColumnAlignments(state)
+            )}
+          </div>
         </div>
       </div>
 
@@ -133,7 +141,14 @@ function renderClickedMode(state: AppState): string {
               </div>
               ${renderQueryResultActions(state)}
             </div>
-            <div class="table-wrap">${renderTable(queryResult.headers || [], queryResult.rows || [])}</div>
+            <div class="table-wrap">
+              ${renderTable(
+                queryResult.headers || [],
+                queryResult.rows || [],
+                "query",
+                buildQueryColumnAlignments(queryResult.headers || [], queryResult.rows || [])
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -397,23 +412,111 @@ function renderCatalogTables(state: AppState): string {
     .join("");
 }
 
-function renderTable(headers: string[], rows: string[][]): string {
+function renderTable(
+  headers: string[],
+  rows: string[][],
+  table: CellViewerTable,
+  alignments: ColumnAlignment[]
+): string {
   if (!headers.length) {
     return '<div class="empty-state">No rows returned.</div>';
   }
 
   return `
     <table>
-      <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+      <thead>
+        <tr>
+          ${headers
+            .map((header, columnIndex) => `<th class="${alignmentClass(alignments[columnIndex])}">${escapeHtml(header)}</th>`)
+            .join("")}
+        </tr>
+      </thead>
       <tbody>
         ${rows
-          .map((row) => `<tr>${row.map((cell) => `<td class="mono">${escapeHtml(cell)}</td>`).join("")}</tr>`)
+          .map(
+            (row, rowIndex) =>
+              `<tr>${row
+                .map(
+                  (cell, columnIndex) =>
+                    `<td class="${alignmentClass(alignments[columnIndex])}"><button class="cell-button mono" data-cell-table="${table}" data-cell-row="${rowIndex}" data-cell-col="${columnIndex}" title="View full cell value">${escapeHtml(cell)}</button></td>`
+                )
+                .join("")}</tr>`
+          )
           .join("")}
       </tbody>
     </table>
   `;
 }
 
+function renderCellViewer(state: AppState): string {
+  if (!state.cellViewer.isOpen) {
+    return "";
+  }
+  const tableLabel = state.cellViewer.table === "preview" ? "Preview" : "Query";
+  return `
+    <div class="cell-viewer-backdrop" data-cell-viewer-backdrop="true" role="presentation">
+      <div class="cell-viewer" role="dialog" aria-modal="true" aria-label="Cell value">
+        <div class="cell-viewer-head">
+          <div class="cell-viewer-title">Cell Value</div>
+          <button class="toolbar-button" data-action="close-cell-viewer">Close</button>
+        </div>
+        <div class="cell-viewer-meta">
+          <span>${escapeHtml(tableLabel)}</span>
+          <span>${escapeHtml(`Row ${state.cellViewer.rowNumber}`)}</span>
+          <span>${escapeHtml(state.cellViewer.columnName)}</span>
+        </div>
+        <pre class="cell-viewer-value mono">${escapeHtml(state.cellViewer.value)}</pre>
+      </div>
+    </div>
+  `;
+}
+
 function option(value: string, label: string, selected: string): string {
   return `<option value="${escapeAttr(value)}" ${selected === value ? "selected" : ""}>${escapeHtml(label)}</option>`;
+}
+
+type ColumnAlignment = "left" | "right";
+
+function buildPreviewColumnAlignments(state: AppState): ColumnAlignment[] {
+  const typeByName = new Map(
+    (state.payload.columns || []).map((column) => [column.name, column.type])
+  );
+  return (state.payload.previewHeaders || []).map((header) =>
+    isNumericType(typeByName.get(header)) ? "right" : "left"
+  );
+}
+
+function buildQueryColumnAlignments(headers: string[], rows: string[][]): ColumnAlignment[] {
+  return headers.map((_header, columnIndex) =>
+    isLikelyNumericColumn(rows, columnIndex) ? "right" : "left"
+  );
+}
+
+function isNumericType(type: string | undefined): boolean {
+  const upper = String(type || "").toUpperCase();
+  return /TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|DECIMAL|REAL|NUMERIC/.test(upper);
+}
+
+function isLikelyNumericColumn(rows: string[][], columnIndex: number): boolean {
+  let seen = 0;
+  for (const row of rows) {
+    const value = String(row[columnIndex] ?? "").trim();
+    if (!value || value.toLowerCase() === "null") {
+      continue;
+    }
+    seen += 1;
+    if (!isNumericString(value)) {
+      return false;
+    }
+  }
+  return seen > 0;
+}
+
+function isNumericString(value: string): boolean {
+  const normalized = value.replace(/,/g, "");
+  return /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(normalized);
+}
+
+function alignmentClass(alignment: ColumnAlignment | undefined): string {
+  return alignment === "right" ? "cell-align-right" : "cell-align-left";
 }

@@ -688,6 +688,36 @@ td {
   font-size: 11px;
 }
 
+.cell-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  padding: 0;
+  margin: 0;
+  text-align: inherit;
+  width: 100%;
+  max-width: 100%;
+  max-height: 4.2em;
+  overflow: hidden;
+}
+
+.cell-align-left {
+  text-align: left;
+}
+
+.cell-align-right {
+  text-align: right;
+}
+
+.cell-button:hover,
+.cell-button:focus-visible {
+  outline: none;
+  background: rgba(102, 131, 160, 0.1);
+}
+
 th {
   background: #fbfcfd;
   color: var(--muted);
@@ -703,6 +733,59 @@ th {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   tab-size: 2;
+}
+
+.cell-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 39, 51, 0.46);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 18px;
+}
+
+.cell-viewer {
+  width: min(980px, 96vw);
+  max-height: 88vh;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.cell-viewer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #fbfcfd;
+}
+
+.cell-viewer-title {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cell-viewer-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cell-viewer-value {
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .query-workspace {

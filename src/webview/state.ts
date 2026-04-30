@@ -17,6 +17,16 @@ export interface ConnectFormState {
   s3Profile: string;
 }
 
+export type CellViewerTable = "preview" | "query";
+
+export interface CellViewerState {
+  isOpen: boolean;
+  table: CellViewerTable;
+  columnName: string;
+  rowNumber: number;
+  value: string;
+}
+
 export interface AppState {
   mode: ViewMode;
   tab: MainTab;
@@ -31,6 +41,7 @@ export interface AppState {
   error: string;
   form: ConnectFormState;
   ui: Required<PersistedUiState>;
+  cellViewer: CellViewerState;
 }
 
 const DEFAULT_S3_PATH = "s3://acme-lake/orders/year=2026/month=04/";
@@ -59,6 +70,13 @@ export function createInitialState(persisted: PersistedUiState = {}): AppState {
     ui: {
       sidebarWidth: clampNumber(persisted.sidebarWidth, 268, 520, 300),
       explorerHeight: clampNumber(persisted.explorerHeight, 180, 520, 284)
+    },
+    cellViewer: {
+      isOpen: false,
+      table: "preview",
+      columnName: "",
+      rowNumber: 0,
+      value: ""
     }
   };
 }
@@ -109,6 +127,7 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
           s3Path: message.source.kind === "s3" ? message.source.path || current.form.s3Path : current.form.s3Path,
           s3Profile: message.source.kind === "s3" ? message.source.s3Profile || "" : current.form.s3Profile
         },
+        cellViewer: { ...current.cellViewer, isOpen: false },
         error: ""
       };
     }
@@ -121,6 +140,7 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
               rows: [...current.queryResult.rows, ...message.query.rows]
             }
           : message.query,
+        cellViewer: message.append ? current.cellViewer : { ...current.cellViewer, isOpen: false },
         error: ""
       };
     case "error":
@@ -198,6 +218,35 @@ export function updateUiState(
     ui: {
       ...state.ui,
       ...partial
+    }
+  };
+}
+
+export function openCellViewer(
+  state: AppState,
+  details: { table: CellViewerTable; columnName: string; rowNumber: number; value: string }
+): AppState {
+  return {
+    ...state,
+    cellViewer: {
+      isOpen: true,
+      table: details.table,
+      columnName: details.columnName,
+      rowNumber: details.rowNumber,
+      value: details.value
+    }
+  };
+}
+
+export function closeCellViewer(state: AppState): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      isOpen: false
     }
   };
 }

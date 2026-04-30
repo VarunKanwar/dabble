@@ -3,8 +3,10 @@ import { renderApp } from "./render.js";
 import {
   applyExtensionMessage,
   clampNumber,
+  closeCellViewer,
   createInitialState,
   isLocalSourceKind,
+  openCellViewer,
   setClosingColumn,
   setExpandedColumn,
   setOpeningColumn,
@@ -13,7 +15,8 @@ import {
   setTab,
   updateFormField,
   updateUiState,
-  type AppState
+  type AppState,
+  type CellViewerTable
 } from "./state.js";
 
 interface VsCodeApi<State> {
@@ -66,6 +69,12 @@ class DabbleApp {
     if (!target) {
       return;
     }
+    const backdrop = target.closest<HTMLElement>("[data-cell-viewer-backdrop]");
+    if (backdrop && target === backdrop) {
+      this.state = closeCellViewer(this.state);
+      this.render();
+      return;
+    }
 
     const screenButton = target.closest<HTMLElement>("[data-screen]");
     if (screenButton) {
@@ -109,6 +118,17 @@ class DabbleApp {
         type: "selectTable",
         tableName: tableButton.dataset.tableName
       });
+      return;
+    }
+
+    const cellButton = target.closest<HTMLElement>("[data-cell-table][data-cell-row][data-cell-col]");
+    if (cellButton) {
+      const cellTable = cellButton.dataset.cellTable;
+      const rowIndex = Number(cellButton.dataset.cellRow);
+      const columnIndex = Number(cellButton.dataset.cellCol);
+      if ((cellTable === "preview" || cellTable === "query") && Number.isInteger(rowIndex) && Number.isInteger(columnIndex)) {
+        this.openCellViewerFromTable(cellTable, rowIndex, columnIndex);
+      }
       return;
     }
 
@@ -159,6 +179,10 @@ class DabbleApp {
             s3Profile: this.state.form.s3Profile
           }
         });
+        return;
+      case "close-cell-viewer":
+        this.state = closeCellViewer(this.state);
+        this.render();
         return;
       default:
         return;
@@ -215,6 +239,13 @@ class DabbleApp {
 
   private handleGlobalKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Escape" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return;
+    }
+    if (this.state.cellViewer.isOpen) {
+      this.state = closeCellViewer(this.state);
+      this.render();
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
     if (this.state.mode !== "clicked" || this.state.tab !== "query") {
@@ -325,6 +356,24 @@ class DabbleApp {
 
   private postMessage(message: WebviewToExtensionMessage): void {
     this.vscode.postMessage(message);
+  }
+
+  private openCellViewerFromTable(table: CellViewerTable, rowIndex: number, columnIndex: number): void {
+    const rows = table === "preview" ? this.state.payload.previewRows : this.state.queryResult.rows;
+    const headers = table === "preview" ? this.state.payload.previewHeaders : this.state.queryResult.headers;
+    const row = rows[rowIndex];
+    const value = row?.[columnIndex];
+    if (!row || typeof value !== "string") {
+      return;
+    }
+    const columnName = headers[columnIndex] || `Column ${columnIndex + 1}`;
+    this.state = openCellViewer(this.state, {
+      table,
+      columnName,
+      rowNumber: rowIndex + 1,
+      value
+    });
+    this.render();
   }
 
   private focusQueryEditor(): boolean {
