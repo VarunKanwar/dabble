@@ -912,7 +912,8 @@ function escapeLiteral(value: string): string {
 }
 
 function isNumericType(type: string): boolean {
-  return /TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|DECIMAL|REAL/i.test(type);
+  const normalized = String(type || "").trim().toUpperCase();
+  return /^(?:TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UHUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|DECIMAL|REAL|NUMERIC)(?:\b|\()/.test(normalized);
 }
 
 async function numericHistogram(connection: DuckDBConnection, columnName: string): Promise<DistributionRow[]> {

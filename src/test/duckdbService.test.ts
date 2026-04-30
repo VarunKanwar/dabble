@@ -171,6 +171,15 @@ test("loadSource jsonl returns correct shape", async () => {
   assert.equal(result.payload.stats.find(([k]) => k === "Source")?.[1], "JSONL file");
 });
 
+test("loadSource jsonl keeps nested struct columns on top-values explorer path", async () => {
+  const svc = new DuckDBService();
+  const result = await svc.loadSource({ ...source("jsonl", jsonlPath), selectedColumn: "meta" });
+
+  assert.equal(result.source.selectedColumn, "meta");
+  assert.equal(result.payload.explorer.view, "topValues");
+  assert.match(result.payload.explorer.type, /^STRUCT\(/);
+});
+
 // --- loadSource: sqlite ---
 
 test("loadSource sqlite returns correct shape", async () => {

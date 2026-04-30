@@ -7,9 +7,11 @@ import {
   createInitialState,
   isLocalSourceKind,
   openCellViewer,
+  setCellViewerCopyStatus,
   setCellViewerPretty,
   setCellViewerPrettyError,
   setCellViewerRaw,
+  setCellViewerTree,
   setClosingColumn,
   setExpandedColumn,
   setOpeningColumn,
@@ -195,6 +197,12 @@ class DabbleApp {
         return;
       case "cell-viewer-pretty":
         this.showPrettyJsonIfPossible();
+        return;
+      case "cell-viewer-tree":
+        this.showTreeJsonIfPossible();
+        return;
+      case "cell-viewer-copy":
+        void this.copyCurrentCellViewerValue();
         return;
       default:
         return;
@@ -394,7 +402,11 @@ class DabbleApp {
       return;
     }
     if (this.state.cellViewer.prettyValue) {
-      this.state = setCellViewerPretty(this.state, this.state.cellViewer.prettyValue);
+      this.state = setCellViewerPretty(
+        this.state,
+        this.state.cellViewer.parsedJson ?? {},
+        this.state.cellViewer.prettyValue
+      );
       this.render();
       return;
     }
@@ -409,15 +421,65 @@ class DabbleApp {
       return;
     }
 
-    const prettyValue = tryFormatJson(rawValue);
-    if (!prettyValue) {
+    const formatted = tryFormatJson(rawValue);
+    if (!formatted) {
       this.state = setCellViewerPrettyError(this.state, "Could not parse this value as JSON.");
       this.render();
       return;
     }
 
-    this.state = setCellViewerPretty(this.state, prettyValue);
+    this.state = setCellViewerPretty(this.state, formatted.parsedJson, formatted.prettyValue);
     this.render();
+  }
+
+  private showTreeJsonIfPossible(): void {
+    if (!this.state.cellViewer.isOpen || !this.state.cellViewer.canPrettyJson) {
+      return;
+    }
+    if (this.state.cellViewer.parsedJson && this.state.cellViewer.prettyValue) {
+      this.state = setCellViewerTree(this.state, this.state.cellViewer.parsedJson, this.state.cellViewer.prettyValue);
+      this.render();
+      return;
+    }
+
+    const rawValue = this.state.cellViewer.value;
+    if (rawValue.length > MAX_PRETTY_JSON_CHARS) {
+      this.state = setCellViewerPrettyError(
+        this.state,
+        "Tree view is disabled for very large values. Use raw view."
+      );
+      this.render();
+      return;
+    }
+
+    const formatted = tryFormatJson(rawValue);
+    if (!formatted) {
+      this.state = setCellViewerPrettyError(this.state, "Could not parse this value as JSON.");
+      this.render();
+      return;
+    }
+
+    this.state = setCellViewerTree(this.state, formatted.parsedJson, formatted.prettyValue);
+    this.render();
+  }
+
+  private async copyCurrentCellViewerValue(): Promise<void> {
+    if (!this.state.cellViewer.isOpen) {
+      return;
+    }
+    const text = getCopyValue(this.state);
+    try {
+      await navigator.clipboard.writeText(text);
+      this.state = setCellViewerCopyStatus(this.state, "copied");
+      this.render();
+      window.setTimeout(() => {
+        this.state = setCellViewerCopyStatus(this.state, "idle");
+        this.render();
+      }, 1200);
+    } catch {
+      this.state = setCellViewerCopyStatus(this.state, "error");
+      this.render();
+    }
   }
 
   private focusQueryEditor(): boolean {
@@ -513,16 +575,30 @@ function isLikelyJsonText(value: string): boolean {
   return (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
 }
 
-function tryFormatJson(value: string): string | null {
+function tryFormatJson(value: string): { parsedJson: unknown; prettyValue: string } | null {
   try {
     const parsed = JSON.parse(value) as unknown;
     if (!parsed || typeof parsed !== "object") {
       return null;
     }
-    return JSON.stringify(parsed, null, 2);
+    return {
+      parsedJson: parsed,
+      prettyValue: JSON.stringify(parsed, null, 2)
+    };
   } catch {
     return null;
   }
+}
+
+function getCopyValue(state: AppState): string {
+  const { cellViewer } = state;
+  if (cellViewer.format === "raw") {
+    return cellViewer.value;
+  }
+  if (cellViewer.prettyValue) {
+    return cellViewer.prettyValue;
+  }
+  return cellViewer.value;
 }
 
 interface QueryEditorFocusSnapshot {

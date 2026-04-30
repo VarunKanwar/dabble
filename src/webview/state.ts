@@ -26,9 +26,11 @@ export interface CellViewerState {
   rowNumber: number;
   value: string;
   canPrettyJson: boolean;
-  format: "raw" | "pretty";
+  format: "raw" | "pretty" | "tree";
+  parsedJson: unknown | null;
   prettyValue: string | null;
   prettyError: string | null;
+  copyStatus: "idle" | "copied" | "error";
 }
 
 export interface AppState {
@@ -83,8 +85,10 @@ export function createInitialState(persisted: PersistedUiState = {}): AppState {
       value: "",
       canPrettyJson: false,
       format: "raw",
+      parsedJson: null,
       prettyValue: null,
-      prettyError: null
+      prettyError: null,
+      copyStatus: "idle"
     }
   };
 }
@@ -244,8 +248,10 @@ export function openCellViewer(
       value: details.value,
       canPrettyJson: details.canPrettyJson,
       format: "raw",
+      parsedJson: null,
       prettyValue: null,
-      prettyError: null
+      prettyError: null,
+      copyStatus: "idle"
     }
   };
 }
@@ -272,12 +278,13 @@ export function setCellViewerRaw(state: AppState): AppState {
     cellViewer: {
       ...state.cellViewer,
       format: "raw",
-      prettyError: null
+      prettyError: null,
+      copyStatus: "idle"
     }
   };
 }
 
-export function setCellViewerPretty(state: AppState, prettyValue: string): AppState {
+export function setCellViewerPretty(state: AppState, parsedJson: unknown, prettyValue: string): AppState {
   if (!state.cellViewer.isOpen) {
     return state;
   }
@@ -286,8 +293,27 @@ export function setCellViewerPretty(state: AppState, prettyValue: string): AppSt
     cellViewer: {
       ...state.cellViewer,
       format: "pretty",
+      parsedJson,
       prettyValue,
-      prettyError: null
+      prettyError: null,
+      copyStatus: "idle"
+    }
+  };
+}
+
+export function setCellViewerTree(state: AppState, parsedJson: unknown, prettyValue: string): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      format: "tree",
+      parsedJson,
+      prettyValue,
+      prettyError: null,
+      copyStatus: "idle"
     }
   };
 }
@@ -301,7 +327,21 @@ export function setCellViewerPrettyError(state: AppState, message: string): AppS
     cellViewer: {
       ...state.cellViewer,
       format: "raw",
-      prettyError: message
+      prettyError: message,
+      copyStatus: "idle"
+    }
+  };
+}
+
+export function setCellViewerCopyStatus(state: AppState, copyStatus: CellViewerState["copyStatus"]): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      copyStatus
     }
   };
 }

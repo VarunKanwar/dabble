@@ -793,6 +793,79 @@ th {
   line-height: 1.45;
 }
 
+.json-tree {
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.json-tree-root,
+.json-children,
+.json-inline {
+  list-style: none;
+  margin: 0;
+  padding-left: 14px;
+}
+
+.json-tree-root > li,
+.json-children > li {
+  margin: 2px 0;
+}
+
+.json-inline {
+  display: inline;
+  vertical-align: baseline;
+  padding-left: 8px;
+}
+
+.json-inline > li {
+  display: inline;
+}
+
+.json-node {
+  display: inline;
+}
+
+.json-node > summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.json-bracket {
+  color: var(--text-strong);
+}
+
+.json-count {
+  color: var(--muted);
+}
+
+.json-key {
+  color: #885f16;
+}
+
+.json-index {
+  color: var(--muted);
+}
+
+.json-string {
+  color: #0c5b6e;
+}
+
+.json-number {
+  color: #7a2ee6;
+}
+
+.json-boolean {
+  color: #006f36;
+}
+
+.json-null {
+  color: #8f3f2f;
+}
+
 .cell-viewer-error {
   padding: 8px 10px;
   border-bottom: 1px solid var(--line-soft);

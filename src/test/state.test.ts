@@ -6,9 +6,11 @@ import {
   closeCellViewer,
   createInitialState,
   openCellViewer,
+  setCellViewerCopyStatus,
   setCellViewerPretty,
   setCellViewerPrettyError,
   setCellViewerRaw,
+  setCellViewerTree,
   setExpandedColumn,
   setOpeningColumn
 } from "../webview/state";
@@ -146,9 +148,12 @@ test("cell viewer supports pretty/raw toggles and parse errors", () => {
     canPrettyJson: true
   });
 
-  const pretty = setCellViewerPretty(opened, "{\n  \"a\": 1\n}");
+  const pretty = setCellViewerPretty(opened, { a: 1 }, "{\n  \"a\": 1\n}");
   assert.equal(pretty.cellViewer.format, "pretty");
   assert.equal(pretty.cellViewer.prettyValue, "{\n  \"a\": 1\n}");
+
+  const tree = setCellViewerTree(pretty, { a: 1 }, "{\n  \"a\": 1\n}");
+  assert.equal(tree.cellViewer.format, "tree");
 
   const raw = setCellViewerRaw(pretty);
   assert.equal(raw.cellViewer.format, "raw");
@@ -157,4 +162,7 @@ test("cell viewer supports pretty/raw toggles and parse errors", () => {
   const errored = setCellViewerPrettyError(raw, "Could not parse this value as JSON.");
   assert.equal(errored.cellViewer.format, "raw");
   assert.equal(errored.cellViewer.prettyError, "Could not parse this value as JSON.");
+
+  const copied = setCellViewerCopyStatus(errored, "copied");
+  assert.equal(copied.cellViewer.copyStatus, "copied");
 });

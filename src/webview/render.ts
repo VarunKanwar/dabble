@@ -457,6 +457,12 @@ function renderCellViewer(state: AppState): string {
     state.cellViewer.format === "pretty" && state.cellViewer.prettyValue
       ? state.cellViewer.prettyValue
       : state.cellViewer.value;
+  const copyLabel =
+    state.cellViewer.copyStatus === "copied"
+      ? "Copied"
+      : state.cellViewer.copyStatus === "error"
+        ? "Copy Failed"
+        : "Copy";
   return `
     <div class="cell-viewer-backdrop" data-cell-viewer-backdrop="true" role="presentation">
       <div class="cell-viewer" role="dialog" aria-modal="true" aria-label="Cell value">
@@ -465,8 +471,12 @@ function renderCellViewer(state: AppState): string {
           <div class="cell-viewer-actions">
             ${state.cellViewer.canPrettyJson
               ? `<button class="toolbar-button ${state.cellViewer.format === "raw" ? "active" : ""}" data-action="cell-viewer-raw">Raw</button>
-                 <button class="toolbar-button ${state.cellViewer.format === "pretty" ? "active" : ""}" data-action="cell-viewer-pretty">Pretty JSON</button>`
+                 <button class="toolbar-button ${state.cellViewer.format === "pretty" ? "active" : ""}" data-action="cell-viewer-pretty">Pretty</button>`
               : ""}
+            ${state.cellViewer.canPrettyJson
+              ? `<button class="toolbar-button ${state.cellViewer.format === "tree" ? "active" : ""}" data-action="cell-viewer-tree">Tree</button>`
+              : ""}
+            <button class="toolbar-button" data-action="cell-viewer-copy">${escapeHtml(copyLabel)}</button>
             <button class="toolbar-button" data-action="close-cell-viewer">Close</button>
           </div>
         </div>
@@ -474,10 +484,12 @@ function renderCellViewer(state: AppState): string {
           <span>${escapeHtml(tableLabel)}</span>
           <span>${escapeHtml(`Row ${state.cellViewer.rowNumber}`)}</span>
           <span>${escapeHtml(state.cellViewer.columnName)}</span>
-          <span>${escapeHtml(state.cellViewer.format === "pretty" ? "Pretty JSON" : "Raw")}</span>
+          <span>${escapeHtml(cellViewerFormatLabel(state))}</span>
         </div>
         ${state.cellViewer.prettyError ? `<div class="cell-viewer-error">${escapeHtml(state.cellViewer.prettyError)}</div>` : ""}
-        <pre class="cell-viewer-value mono">${escapeHtml(displayValue)}</pre>
+        ${state.cellViewer.format === "tree" && state.cellViewer.parsedJson
+          ? `<div class="cell-viewer-value json-tree mono">${renderJsonTree(state.cellViewer.parsedJson)}</div>`
+          : `<pre class="cell-viewer-value mono">${escapeHtml(displayValue)}</pre>`}
       </div>
     </div>
   `;
@@ -505,8 +517,8 @@ function buildQueryColumnAlignments(headers: string[], rows: string[][]): Column
 }
 
 function isNumericType(type: string | undefined): boolean {
-  const upper = String(type || "").toUpperCase();
-  return /TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|DECIMAL|REAL|NUMERIC/.test(upper);
+  const upper = String(type || "").trim().toUpperCase();
+  return /^(?:TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UHUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|DECIMAL|REAL|NUMERIC)(?:\b|\()/.test(upper);
 }
 
 function isLikelyNumericColumn(rows: string[][], columnIndex: number): boolean {
@@ -531,4 +543,82 @@ function isNumericString(value: string): boolean {
 
 function alignmentClass(alignment: ColumnAlignment | undefined): string {
   return alignment === "right" ? "cell-align-right" : "cell-align-left";
+}
+
+function cellViewerFormatLabel(state: AppState): string {
+  if (state.cellViewer.format === "tree") {
+    return "Tree JSON";
+  }
+  if (state.cellViewer.format === "pretty") {
+    return "Pretty JSON";
+  }
+  return "Raw";
+}
+
+function renderJsonTree(value: unknown): string {
+  return `<ul class="json-tree-root">${renderJsonNode(value, 0)}</ul>`;
+}
+
+function renderJsonNode(value: unknown, depth: number): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return `<li><span class="json-bracket">[]</span></li>`;
+    }
+    return `
+      <li>
+        <details class="json-node" ${depth < 1 ? "open" : ""}>
+          <summary><span class="json-bracket">[ ]</span> <span class="json-count">${value.length} items</span></summary>
+          <ul class="json-children">
+            ${value
+              .map((item, index) => `<li><span class="json-index">${index}</span>: ${renderJsonValue(item, depth + 1)}</li>`)
+              .join("")}
+          </ul>
+        </details>
+      </li>
+    `;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (!entries.length) {
+      return `<li><span class="json-bracket">{ }</span></li>`;
+    }
+    return `
+      <li>
+        <details class="json-node" ${depth < 1 ? "open" : ""}>
+          <summary><span class="json-bracket">{ }</span> <span class="json-count">${entries.length} keys</span></summary>
+          <ul class="json-children">
+            ${entries
+              .map(([key, child]) => `<li><span class="json-key">"${escapeHtml(key)}"</span>: ${renderJsonValue(child, depth + 1)}</li>`)
+              .join("")}
+          </ul>
+        </details>
+      </li>
+    `;
+  }
+
+  return `<li>${renderJsonPrimitive(value)}</li>`;
+}
+
+function renderJsonValue(value: unknown, depth: number): string {
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return `<ul class="json-inline">${renderJsonNode(value, depth)}</ul>`;
+  }
+  return renderJsonPrimitive(value);
+}
+
+function renderJsonPrimitive(value: unknown): string {
+  if (typeof value === "string") {
+    return `<span class="json-string">"${escapeHtml(value)}"</span>`;
+  }
+  if (typeof value === "number") {
+    return `<span class="json-number">${escapeHtml(String(value))}</span>`;
+  }
+  if (typeof value === "boolean") {
+    return `<span class="json-boolean">${escapeHtml(String(value))}</span>`;
+  }
+  if (value === null) {
+    return '<span class="json-null">null</span>';
+  }
+  return `<span>${escapeHtml(String(value ?? ""))}</span>`;
 }
