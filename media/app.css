@@ -700,6 +700,9 @@ th {
 
 .mono {
   font-family: var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
 }
 
 .query-workspace {

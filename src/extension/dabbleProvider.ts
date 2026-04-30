@@ -7,6 +7,7 @@ import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
 import { parseWebviewMessage } from "./webviewMessage";
 
 const VIEW_TYPE = "dabble.viewer";
+const JSONL_VIEW_TYPE = "dabble.viewer.jsonl";
 
 let providerInstance: DabbleProvider | null = null;
 
@@ -32,6 +33,7 @@ interface PanelController {
 
 class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocument> {
   private readonly duckdb = new DuckDBService();
+  private readonly promptedLargeJsonlUris = new Set<string>();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -40,6 +42,12 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
 
     registrations.push(
       vscode.window.registerCustomEditorProvider(VIEW_TYPE, this, {
+        webviewOptions: { retainContextWhenHidden: true },
+        supportsMultipleEditorsPerDocument: false
+      })
+    );
+    registrations.push(
+      vscode.window.registerCustomEditorProvider(JSONL_VIEW_TYPE, this, {
         webviewOptions: { retainContextWhenHidden: true },
         supportsMultipleEditorsPerDocument: false
       })
@@ -53,10 +61,23 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
       vscode.commands.registerCommand("dabble.openWithDabble", async (resource?: vscode.Uri) => {
         const target = resource ?? vscode.window.activeTextEditor?.document.uri;
         if (!target) {
-          void vscode.window.showInformationMessage("Select a Parquet, DuckDB, or SQLite file to open with Dabble.");
+          void vscode.window.showInformationMessage("Select a Parquet, JSONL, DuckDB, or SQLite file to open with Dabble.");
           return;
         }
-        await vscode.commands.executeCommand("vscode.openWith", target, VIEW_TYPE);
+        await vscode.commands.executeCommand("vscode.openWith", target, viewTypeForResource(target));
+      })
+    );
+    registrations.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        void this.maybeOfferLargeJsonlPrompt(editor?.document.uri);
+      })
+    );
+    registrations.push(
+      vscode.workspace.onDidOpenTextDocument((document) => {
+        if (vscode.window.activeTextEditor?.document.uri.toString() !== document.uri.toString()) {
+          return;
+        }
+        void this.maybeOfferLargeJsonlPrompt(document.uri);
       })
     );
 
@@ -309,6 +330,43 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
     await controller.activeQuery.dispose();
     controller.activeQuery = null;
   }
+
+  private async maybeOfferLargeJsonlPrompt(uri: vscode.Uri | undefined): Promise<void> {
+    if (!uri || !isJsonlUri(uri) || uri.scheme !== "file") {
+      return;
+    }
+    const key = uri.toString();
+    if (this.promptedLargeJsonlUris.has(key)) {
+      return;
+    }
+
+    const thresholdMb = getLargeFileThresholdMb();
+    if (thresholdMb <= 0) {
+      return;
+    }
+
+    let stats: vscode.FileStat;
+    try {
+      stats = await vscode.workspace.fs.stat(uri);
+    } catch {
+      return;
+    }
+
+    const thresholdBytes = thresholdMb * 1024 * 1024;
+    if (stats.size < thresholdBytes) {
+      return;
+    }
+
+    this.promptedLargeJsonlUris.add(key);
+    const openAction = "Open in Dabble";
+    const selectedAction = await vscode.window.showInformationMessage(
+      `Large JSONL file detected (${formatMegabytes(stats.size)} MB). Open it in Dabble?`,
+      openAction
+    );
+    if (selectedAction === openAction) {
+      await vscode.commands.executeCommand("vscode.openWith", uri, JSONL_VIEW_TYPE);
+    }
+  }
 }
 
 class DabbleDocument implements vscode.CustomDocument {
@@ -340,4 +398,26 @@ async function pickFolderUri(): Promise<vscode.Uri | undefined> {
 
 function getPreviewLimit(): number {
   return normalizePreviewLimit(vscode.workspace.getConfiguration("dabble").get("previewLimit", DEFAULT_PREVIEW_LIMIT));
+}
+
+function getLargeFileThresholdMb(): number {
+  const configured = vscode.workspace.getConfiguration("workbench").get("editorLargeFileConfirmation", 50);
+  const numeric = Number(configured);
+  if (!Number.isFinite(numeric)) {
+    return 50;
+  }
+  return Math.max(0, numeric);
+}
+
+function isJsonlUri(uri: vscode.Uri): boolean {
+  const ext = path.extname(uri.fsPath).toLowerCase();
+  return ext === ".jsonl" || ext === ".ndjson";
+}
+
+function viewTypeForResource(resource: vscode.Uri): string {
+  return isJsonlUri(resource) ? JSONL_VIEW_TYPE : VIEW_TYPE;
+}
+
+function formatMegabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(2);
 }

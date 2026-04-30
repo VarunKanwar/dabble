@@ -1,7 +1,7 @@
 {
   "name": "dabble",
   "displayName": "Dabble",
-  "description": "Inspect Parquet, SQLite, and DuckDB files in VS Code — powered by native DuckDB.",
+  "description": "Inspect Parquet, JSONL, SQLite, and DuckDB files in VS Code — powered by native DuckDB.",
   "icon": "media/icon.png",
   "version": "0.2.1",
   "publisher": "VarunKanwar",
@@ -13,6 +13,7 @@
   "homepage": "https://github.com/VarunKanwar/dabble#readme",
   "keywords": [
     "parquet",
+    "jsonl",
     "duckdb",
     "sqlite",
     "data",
@@ -42,7 +43,8 @@
     "onCommand:dabble.openSource",
     "onCommand:dabble.openAsParquetDataset",
     "onCommand:dabble.openWithDabble",
-    "onCustomEditor:dabble.viewer"
+    "onCustomEditor:dabble.viewer",
+    "onCustomEditor:dabble.viewer.jsonl"
   ],
   "main": "./dist/extension/index.js",
   "extensionKind": [
@@ -67,7 +69,7 @@
       "explorer/context": [
         {
           "command": "dabble.openWithDabble",
-          "when": "resourceExtname == .parquet || resourceExtname == .sqlite || resourceExtname == .db || resourceExtname == .duckdb",
+          "when": "resourceExtname == .parquet || resourceExtname == .jsonl || resourceExtname == .ndjson || resourceExtname == .sqlite || resourceExtname == .db || resourceExtname == .duckdb",
           "group": "navigation"
         },
         {
@@ -96,6 +98,19 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "dabble.viewer.jsonl",
+        "displayName": "Dabble",
+        "selector": [
+          {
+            "filenamePattern": "*.jsonl"
+          },
+          {
+            "filenamePattern": "*.ndjson"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "configurationDefaults": {

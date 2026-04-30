@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { inferKindFromPath, normalizeIncomingSource, normalizePreviewLimit } from "../extension/sourceUtils";
 
-test("inferKindFromPath recognizes DuckDB, SQLite, and Parquet files", () => {
+test("inferKindFromPath recognizes DuckDB, SQLite, Parquet, and JSONL files", () => {
   assert.equal(inferKindFromPath("/tmp/data.duckdb"), "duckdb");
   assert.equal(inferKindFromPath("/tmp/data.sqlite"), "sqlite");
   assert.equal(inferKindFromPath("/tmp/data.db"), "sqlite");
   assert.equal(inferKindFromPath("/tmp/data.parquet"), "parquet");
+  assert.equal(inferKindFromPath("/tmp/data.jsonl"), "jsonl");
+  assert.equal(inferKindFromPath("/tmp/data.ndjson"), "jsonl");
 });
 
 test("inferKindFromPath falls back to dataset for directories and unknown files", () => {

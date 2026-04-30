@@ -4,13 +4,14 @@
 
 # Dabble
 
-Inspect Parquet, SQLite, and DuckDB files directly in VS Code. Dabble opens data files in a readonly viewer powered by native DuckDB running in the workspace extension host — no separate server product, no hidden query rewrites, no extra services to manage.
+Inspect Parquet, JSONL, SQLite, and DuckDB files directly in VS Code. Dabble opens data files in a readonly viewer powered by native DuckDB running in the workspace extension host — no separate server product, no hidden query rewrites, no extra services to manage.
 
 ## Supported Formats
 
 | Format | How to open |
 |---|---|
 | `.parquet` | Open the file — Dabble is the default editor association |
+| `.jsonl` / `.ndjson` | Open in text editor by default, then use **Open With Dabble** when needed |
 | `.sqlite` / `.db` | Open the file — Dabble is the default editor association |
 | `.duckdb` | Open the file — Dabble is the default editor association |
 | Parquet dataset (folder) | Right-click a folder → **Dabble: Open as Parquet Dataset** |

@@ -16,6 +16,9 @@ export function inferKindFromPath(filePath: string): LocalSourceKind {
   if (ext === ".parquet") {
     return "parquet";
   }
+  if (ext === ".jsonl" || ext === ".ndjson") {
+    return "jsonl";
+  }
   return "dataset";
 }
 

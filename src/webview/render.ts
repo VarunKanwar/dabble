@@ -336,6 +336,7 @@ function renderConnectMode(state: AppState): string {
               <label>Type</label>
               <select id="local-type">
                 ${option("parquet", "Parquet file", state.form.localType)}
+                ${option("jsonl", "JSONL file", state.form.localType)}
                 ${option("duckdb", "DuckDB file", state.form.localType)}
                 ${option("sqlite", "SQLite file", state.form.localType)}
                 ${option("dataset", "Parquet dataset folder", state.form.localType)}

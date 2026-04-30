@@ -1,0 +1,3 @@
+{"id":1,"kind":"view","message":"alpha line 1\nalpha line 2","meta":{"region":"us","nested":{"env":"prod","attempt":1}},"tags":["landing","mobile"]}
+{"id":2,"kind":"click","message":"single line","meta":{"region":"eu","nested":{"env":"stage","attempt":2}},"tags":["pricing"]}
+{"id":3,"kind":"submit","message":"first paragraph\n\nsecond paragraph","meta":{"region":"apac","nested":{"env":"prod","attempt":3}},"tags":["checkout","desktop"]}

@@ -1,4 +1,4 @@
-export type SourceKind = "parquet" | "dataset" | "sqlite" | "duckdb" | "s3";
+export type SourceKind = "parquet" | "jsonl" | "dataset" | "sqlite" | "duckdb" | "s3";
 export type LocalSourceKind = Exclude<SourceKind, "s3">;
 export type ViewMode = "clicked" | "connect";
 export type MainTab = "preview" | "query";

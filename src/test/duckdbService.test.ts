@@ -9,10 +9,11 @@ import { buildS3SecretSql, DuckDBService } from "../extension/duckdbService";
 // __dirname resolves to dist/extension/test at runtime; fixtures live in src/test/fixtures
 const fixtures = join(__dirname, "../../../src/test/fixtures");
 const parquetPath = join(fixtures, "sample.parquet");
+const jsonlPath = join(fixtures, "sample.jsonl");
 const sqlitePath = join(fixtures, "sample.sqlite");
 const duckdbPath = join(fixtures, "sample.duckdb");
 
-function source(kind: "parquet" | "sqlite" | "duckdb" | "dataset", path: string) {
+function source(kind: "parquet" | "jsonl" | "sqlite" | "duckdb" | "dataset", path: string) {
   return { kind, path, selectedTable: null, selectedColumn: null, s3Profile: null } as const;
 }
 
@@ -148,6 +149,26 @@ test("loadSource parquet uses histogram view for high-cardinality numeric column
   } finally {
     generated.cleanup();
   }
+});
+
+// --- loadSource: jsonl ---
+
+test("loadSource jsonl returns correct shape", async () => {
+  const svc = new DuckDBService();
+  const result = await svc.loadSource(source("jsonl", jsonlPath));
+  const messageIndex = result.payload.previewHeaders.indexOf("message");
+  const metaIndex = result.payload.previewHeaders.indexOf("meta");
+
+  assert.equal(result.source.kind, "jsonl");
+  assert.equal(result.payload.previewRows.length, 3);
+  assert.ok(result.payload.previewHeaders.includes("id"));
+  assert.ok(result.payload.previewHeaders.includes("kind"));
+  assert.ok(messageIndex >= 0);
+  assert.ok(metaIndex >= 0);
+  assert.ok(result.payload.previewRows[0]?.[messageIndex]?.includes("\n"));
+  assert.ok(result.payload.previewRows[0]?.[metaIndex]?.includes("\"nested\""));
+  assert.equal(result.payload.stats.find(([k]) => k === "Rows")?.[1], "3");
+  assert.equal(result.payload.stats.find(([k]) => k === "Source")?.[1], "JSONL file");
 });
 
 // --- loadSource: sqlite ---

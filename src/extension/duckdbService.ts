@@ -298,6 +298,18 @@ export class DuckDBService {
       };
     }
 
+    if (source.kind === "jsonl") {
+      const name = path.basename(source.path, path.extname(source.path));
+      return {
+        selectedTable: name,
+        tables: [name],
+        title: name,
+        description: "A newline-delimited JSON source opened from the editor.",
+        tree: [name, "main", name, "ndjson schema"],
+        diagnostics: []
+      };
+    }
+
     return {
       selectedTable: path.basename(source.path, path.extname(source.path)),
       tables: [path.basename(source.path, path.extname(source.path))],
@@ -362,6 +374,19 @@ export class DuckDBService {
         ["Rows", formatNumber(countRows[0]?.row_count)],
         ["Preview", String(previewLimit)],
         ["Source", "DuckDB file"]
+      ];
+    }
+
+    if (source.kind === "jsonl") {
+      const countRows = await queryRows<{ row_count?: number }>(
+        connection,
+        `SELECT count(*)::BIGINT AS row_count FROM ${DEFAULT_TABLE_ALIAS}`
+      );
+      return [
+        ["Rows", formatNumber(countRows[0]?.row_count)],
+        ["Columns", String(columns)],
+        ["Preview", String(previewLimit)],
+        ["Source", "JSONL file"]
       ];
     }
 
@@ -669,6 +694,10 @@ function wrapS3PreparationError(error: unknown, profile: string | null): Error {
 function buildRelationSql(source: SourceDescriptor): string {
   if (source.kind === "parquet") {
     return `read_parquet('${escapeLiteral(source.path)}', hive_partitioning = true)`;
+  }
+
+  if (source.kind === "jsonl") {
+    return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true)`;
   }
 
   if (source.kind === "dataset" || source.kind === "s3") {

@@ -217,7 +217,7 @@ export function isLocalSource(source: SourceDescriptor | null): source is Source
 }
 
 export function isLocalSourceKind(value: unknown): value is LocalSourceKind {
-  return value === "parquet" || value === "dataset" || value === "sqlite" || value === "duckdb";
+  return value === "parquet" || value === "jsonl" || value === "dataset" || value === "sqlite" || value === "duckdb";
 }
 
 export function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

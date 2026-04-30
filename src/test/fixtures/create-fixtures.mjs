@@ -1,6 +1,6 @@
 // Run once to generate test fixtures: node src/test/fixtures/create-fixtures.mjs
 import { DuckDBInstance } from "@duckdb/node-api";
-import { mkdirSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -75,6 +75,16 @@ await conn.run(`
 `);
 await conn.run(`CREATE TABLE sqldb.settings (key VARCHAR, val VARCHAR)`);
 await conn.run(`INSERT INTO sqldb.settings VALUES ('theme', 'dark'), ('lang', 'en')`);
+
+// --- sample.jsonl ---
+writeFileSync(
+  join(dir, "sample.jsonl"),
+  [
+    "{\"id\":1,\"kind\":\"view\",\"message\":\"alpha line 1\\nalpha line 2\",\"meta\":{\"region\":\"us\",\"nested\":{\"env\":\"prod\",\"attempt\":1}},\"tags\":[\"landing\",\"mobile\"]}",
+    "{\"id\":2,\"kind\":\"click\",\"message\":\"single line\",\"meta\":{\"region\":\"eu\",\"nested\":{\"env\":\"stage\",\"attempt\":2}},\"tags\":[\"pricing\"]}",
+    "{\"id\":3,\"kind\":\"submit\",\"message\":\"first paragraph\\n\\nsecond paragraph\",\"meta\":{\"region\":\"apac\",\"nested\":{\"env\":\"prod\",\"attempt\":3}},\"tags\":[\"checkout\",\"desktop\"]}"
+  ].join("\n")
+);
 
 conn.closeSync();
 instance.closeSync();

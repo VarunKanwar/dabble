@@ -85,3 +85,23 @@ test("sourceData keeps the S3 profile blank when the source uses automatic crede
 
   assert.equal(next.form.s3Profile, "");
 });
+
+test("sourceData sets localType to jsonl for JSONL sources", () => {
+  const initial = createInitialState();
+
+  const next = applyExtensionMessage(initial, {
+    type: "sourceData",
+    mode: "clicked",
+    previewLimit: 100,
+    source: {
+      kind: "jsonl",
+      path: "/tmp/events.jsonl",
+      selectedTable: "events",
+      selectedColumn: null,
+      s3Profile: null
+    },
+    payload: createEmptyPayload()
+  });
+
+  assert.equal(next.form.localType, "jsonl");
+});

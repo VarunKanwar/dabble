@@ -52,5 +52,5 @@ function isViewMode(value: unknown): value is ViewMode {
 }
 
 function isLocalSourceKind(value: unknown): value is LocalSourceKind {
-  return value === "parquet" || value === "dataset" || value === "sqlite" || value === "duckdb";
+  return value === "parquet" || value === "jsonl" || value === "dataset" || value === "sqlite" || value === "duckdb";
 }

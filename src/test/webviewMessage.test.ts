@@ -18,6 +18,10 @@ test("parseWebviewMessage accepts valid messages", () => {
     type: "browseLocal",
     kind: "dataset"
   });
+  assert.deepEqual(parseWebviewMessage({ type: "browseLocal", kind: "jsonl" }), {
+    type: "browseLocal",
+    kind: "jsonl"
+  });
 });
 
 test("parseWebviewMessage rejects malformed messages", () => {
