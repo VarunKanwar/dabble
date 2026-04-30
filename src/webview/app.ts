@@ -7,6 +7,9 @@ import {
   createInitialState,
   isLocalSourceKind,
   openCellViewer,
+  setCellViewerPretty,
+  setCellViewerPrettyError,
+  setCellViewerRaw,
   setClosingColumn,
   setExpandedColumn,
   setOpeningColumn,
@@ -18,6 +21,8 @@ import {
   type AppState,
   type CellViewerTable
 } from "./state.js";
+
+const MAX_PRETTY_JSON_CHARS = 1_000_000;
 
 interface VsCodeApi<State> {
   postMessage(message: WebviewToExtensionMessage): void;
@@ -183,6 +188,13 @@ class DabbleApp {
       case "close-cell-viewer":
         this.state = closeCellViewer(this.state);
         this.render();
+        return;
+      case "cell-viewer-raw":
+        this.state = setCellViewerRaw(this.state);
+        this.render();
+        return;
+      case "cell-viewer-pretty":
+        this.showPrettyJsonIfPossible();
         return;
       default:
         return;
@@ -371,8 +383,40 @@ class DabbleApp {
       table,
       columnName,
       rowNumber: rowIndex + 1,
-      value
+      value,
+      canPrettyJson: isLikelyJsonText(value)
     });
+    this.render();
+  }
+
+  private showPrettyJsonIfPossible(): void {
+    if (!this.state.cellViewer.isOpen || !this.state.cellViewer.canPrettyJson) {
+      return;
+    }
+    if (this.state.cellViewer.prettyValue) {
+      this.state = setCellViewerPretty(this.state, this.state.cellViewer.prettyValue);
+      this.render();
+      return;
+    }
+
+    const rawValue = this.state.cellViewer.value;
+    if (rawValue.length > MAX_PRETTY_JSON_CHARS) {
+      this.state = setCellViewerPrettyError(
+        this.state,
+        "Pretty formatting is disabled for very large values. Use raw view."
+      );
+      this.render();
+      return;
+    }
+
+    const prettyValue = tryFormatJson(rawValue);
+    if (!prettyValue) {
+      this.state = setCellViewerPrettyError(this.state, "Could not parse this value as JSON.");
+      this.render();
+      return;
+    }
+
+    this.state = setCellViewerPretty(this.state, prettyValue);
     this.render();
   }
 
@@ -459,6 +503,26 @@ function detectShortcutPlatform(): "mac" | "default" {
   const userAgentDataPlatform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform;
   const source = `${userAgentDataPlatform ?? ""} ${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`.toLowerCase();
   return /mac|iphone|ipad|ipod/.test(source) ? "mac" : "default";
+}
+
+function isLikelyJsonText(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) {
+    return false;
+  }
+  return (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+}
+
+function tryFormatJson(value: string): string | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
 }
 
 interface QueryEditorFocusSnapshot {

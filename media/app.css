@@ -764,6 +764,11 @@ th {
   background: #fbfcfd;
 }
 
+.cell-viewer-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .cell-viewer-title {
   color: var(--text-strong);
   font-size: 12px;
@@ -786,6 +791,18 @@ th {
   overflow: auto;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.cell-viewer-error {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  color: #b42318;
+  font-size: 11px;
+}
+
+.toolbar-button.active {
+  background: var(--active);
+  color: var(--text-strong);
 }
 
 .query-workspace {

@@ -25,6 +25,10 @@ export interface CellViewerState {
   columnName: string;
   rowNumber: number;
   value: string;
+  canPrettyJson: boolean;
+  format: "raw" | "pretty";
+  prettyValue: string | null;
+  prettyError: string | null;
 }
 
 export interface AppState {
@@ -76,7 +80,11 @@ export function createInitialState(persisted: PersistedUiState = {}): AppState {
       table: "preview",
       columnName: "",
       rowNumber: 0,
-      value: ""
+      value: "",
+      canPrettyJson: false,
+      format: "raw",
+      prettyValue: null,
+      prettyError: null
     }
   };
 }
@@ -224,7 +232,7 @@ export function updateUiState(
 
 export function openCellViewer(
   state: AppState,
-  details: { table: CellViewerTable; columnName: string; rowNumber: number; value: string }
+  details: { table: CellViewerTable; columnName: string; rowNumber: number; value: string; canPrettyJson: boolean }
 ): AppState {
   return {
     ...state,
@@ -233,7 +241,11 @@ export function openCellViewer(
       table: details.table,
       columnName: details.columnName,
       rowNumber: details.rowNumber,
-      value: details.value
+      value: details.value,
+      canPrettyJson: details.canPrettyJson,
+      format: "raw",
+      prettyValue: null,
+      prettyError: null
     }
   };
 }
@@ -247,6 +259,49 @@ export function closeCellViewer(state: AppState): AppState {
     cellViewer: {
       ...state.cellViewer,
       isOpen: false
+    }
+  };
+}
+
+export function setCellViewerRaw(state: AppState): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      format: "raw",
+      prettyError: null
+    }
+  };
+}
+
+export function setCellViewerPretty(state: AppState, prettyValue: string): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      format: "pretty",
+      prettyValue,
+      prettyError: null
+    }
+  };
+}
+
+export function setCellViewerPrettyError(state: AppState, message: string): AppState {
+  if (!state.cellViewer.isOpen) {
+    return state;
+  }
+  return {
+    ...state,
+    cellViewer: {
+      ...state.cellViewer,
+      format: "raw",
+      prettyError: message
     }
   };
 }

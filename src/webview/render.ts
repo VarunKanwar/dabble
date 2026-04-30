@@ -453,19 +453,31 @@ function renderCellViewer(state: AppState): string {
     return "";
   }
   const tableLabel = state.cellViewer.table === "preview" ? "Preview" : "Query";
+  const displayValue =
+    state.cellViewer.format === "pretty" && state.cellViewer.prettyValue
+      ? state.cellViewer.prettyValue
+      : state.cellViewer.value;
   return `
     <div class="cell-viewer-backdrop" data-cell-viewer-backdrop="true" role="presentation">
       <div class="cell-viewer" role="dialog" aria-modal="true" aria-label="Cell value">
         <div class="cell-viewer-head">
           <div class="cell-viewer-title">Cell Value</div>
-          <button class="toolbar-button" data-action="close-cell-viewer">Close</button>
+          <div class="cell-viewer-actions">
+            ${state.cellViewer.canPrettyJson
+              ? `<button class="toolbar-button ${state.cellViewer.format === "raw" ? "active" : ""}" data-action="cell-viewer-raw">Raw</button>
+                 <button class="toolbar-button ${state.cellViewer.format === "pretty" ? "active" : ""}" data-action="cell-viewer-pretty">Pretty JSON</button>`
+              : ""}
+            <button class="toolbar-button" data-action="close-cell-viewer">Close</button>
+          </div>
         </div>
         <div class="cell-viewer-meta">
           <span>${escapeHtml(tableLabel)}</span>
           <span>${escapeHtml(`Row ${state.cellViewer.rowNumber}`)}</span>
           <span>${escapeHtml(state.cellViewer.columnName)}</span>
+          <span>${escapeHtml(state.cellViewer.format === "pretty" ? "Pretty JSON" : "Raw")}</span>
         </div>
-        <pre class="cell-viewer-value mono">${escapeHtml(state.cellViewer.value)}</pre>
+        ${state.cellViewer.prettyError ? `<div class="cell-viewer-error">${escapeHtml(state.cellViewer.prettyError)}</div>` : ""}
+        <pre class="cell-viewer-value mono">${escapeHtml(displayValue)}</pre>
       </div>
     </div>
   `;

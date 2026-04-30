@@ -6,6 +6,9 @@ import {
   closeCellViewer,
   createInitialState,
   openCellViewer,
+  setCellViewerPretty,
+  setCellViewerPrettyError,
+  setCellViewerRaw,
   setExpandedColumn,
   setOpeningColumn
 } from "../webview/state";
@@ -119,14 +122,39 @@ test("cell viewer opens and closes with explicit state transitions", () => {
     table: "preview",
     columnName: "message",
     rowNumber: 2,
-    value: "line 1\nline 2"
+    value: "line 1\nline 2",
+    canPrettyJson: true
   });
 
   assert.equal(opened.cellViewer.isOpen, true);
   assert.equal(opened.cellViewer.columnName, "message");
   assert.equal(opened.cellViewer.rowNumber, 2);
   assert.equal(opened.cellViewer.value, "line 1\nline 2");
+  assert.equal(opened.cellViewer.canPrettyJson, true);
+  assert.equal(opened.cellViewer.format, "raw");
 
   const closed = closeCellViewer(opened);
   assert.equal(closed.cellViewer.isOpen, false);
+});
+
+test("cell viewer supports pretty/raw toggles and parse errors", () => {
+  const opened = openCellViewer(createInitialState(), {
+    table: "query",
+    columnName: "payload",
+    rowNumber: 1,
+    value: "{\"a\":1}",
+    canPrettyJson: true
+  });
+
+  const pretty = setCellViewerPretty(opened, "{\n  \"a\": 1\n}");
+  assert.equal(pretty.cellViewer.format, "pretty");
+  assert.equal(pretty.cellViewer.prettyValue, "{\n  \"a\": 1\n}");
+
+  const raw = setCellViewerRaw(pretty);
+  assert.equal(raw.cellViewer.format, "raw");
+  assert.equal(raw.cellViewer.prettyError, null);
+
+  const errored = setCellViewerPrettyError(raw, "Could not parse this value as JSON.");
+  assert.equal(errored.cellViewer.format, "raw");
+  assert.equal(errored.cellViewer.prettyError, "Could not parse this value as JSON.");
 });
