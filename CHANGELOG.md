@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.0
+
+- Added JSONL/NDJSON source support in Dabble's preview/query flow using native DuckDB JSON readers.
+- Changed JSONL/NDJSON defaults to open in VS Code's text editor, with Dabble available as an opt-in editor.
+- Added a large-file JSONL prompt with one-click **Open in Dabble** behavior.
+- Added a modal cell viewer for full-value inspection from preview and query tables.
+- Preserved verbatim multiline cell rendering and added on-demand **Pretty JSON** formatting (raw by default).
+- Added numeric column right-alignment in table rendering for clearer scanability.
+- Added JSONL fixtures and expanded tests around source detection, state transitions, and JSON cell-viewer behavior.
+
 ## 0.2.1
 
 - Added the Dabble icon to the extension package metadata and repository README.
