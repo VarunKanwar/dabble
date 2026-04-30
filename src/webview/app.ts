@@ -22,7 +22,7 @@ import {
   type CellViewerTable
 } from "./state.js";
 
-const MAX_PRETTY_JSON_CHARS = 1_000_000;
+const MAX_PRETTY_JSON_CHARS = 10_000_000;
 
 interface VsCodeApi<State> {
   postMessage(message: WebviewToExtensionMessage): void;
