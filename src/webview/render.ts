@@ -194,7 +194,7 @@ function renderObjectExplorer(state: AppState): string {
       <div class="column-list-head">
         <span></span>
         <span>Column</span>
-        <span title="Unique values">Unique</span>
+        <span title="Exact unique values are computed when a column is selected">Unique</span>
         <span title="Null percentage">Null %</span>
       </div>
 

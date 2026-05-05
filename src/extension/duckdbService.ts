@@ -16,6 +16,7 @@ import { normalizePreviewLimit, normalizeSource } from "./sourceUtils";
 
 const DEFAULT_TABLE_ALIAS = "selected_relation";
 const EXTENSION_DIRECTORY = "/tmp/dabble-duckdb-extensions";
+const TEMP_DIRECTORY = "/tmp/dabble-duckdb-temp";
 const QUERY_PAGE_ROW_TARGET = 2048;
 const TOP_VALUES_ROW_LIMIT = 6;
 const NUMERIC_TOP_VALUES_DISTINCT_THRESHOLD = 12;
@@ -54,11 +55,16 @@ export class DuckDBService {
       const previewLimit = normalizePreviewLimit(options.previewLimit);
       const schema = await this.describeRelation(connection);
       const summaryRows = await this.summarizeRelation(connection);
-      const columnMetrics = await this.buildColumnMetrics(connection, schema);
+      const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
+      const shouldLoadSelectedColumnDetails = Boolean(normalized.selectedColumn && selectedColumn);
+      const selectedColumnMetric = shouldLoadSelectedColumnDetails && selectedColumn
+        ? await this.buildColumnMetric(connection, selectedColumn)
+        : null;
       const preview = await this.previewRelation(connection, previewLimit);
       const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
-      const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
-      const explorer = await this.buildExplorer(connection, selectedColumn, schema, columnMetrics);
+      const explorer = shouldLoadSelectedColumnDetails
+        ? await this.buildExplorer(connection, selectedColumn, schema, selectedColumnMetric)
+        : createEmptyExplorer();
       const editorQuery = buildDefaultQuery();
       const queryResult = await executeReadonlyQuery(connection, editorQuery);
 
@@ -75,7 +81,7 @@ export class DuckDBService {
           stats,
           tree: context.tree,
           tables: context.tables,
-          columns: buildColumns(summaryRows, columnMetrics),
+          columns: buildColumns(summaryRows, selectedColumn, selectedColumnMetric),
           rowCountLabel: extractStat(stats, "Rows") || extractStat(stats, "Objects") || "",
           summaryHeaders: ["Column", "Type", "Null %", "Summary"],
           summaryRows: buildSummaryTableRows(summaryRows),
@@ -154,7 +160,9 @@ export class DuckDBService {
 
   private async prepareEnvironment(connection: DuckDBConnection, source: SourceDescriptor): Promise<void> {
     fs.mkdirSync(EXTENSION_DIRECTORY, { recursive: true });
+    fs.mkdirSync(TEMP_DIRECTORY, { recursive: true });
     await connection.run(`SET extension_directory = '${escapeLiteral(EXTENSION_DIRECTORY)}'`);
+    await connection.run(`SET temp_directory = '${escapeLiteral(TEMP_DIRECTORY)}'`);
 
     if (source.kind === "sqlite") {
       await loadExtension(connection, "sqlite");
@@ -434,7 +442,7 @@ export class DuckDBService {
     connection: DuckDBConnection,
     selectedColumn: string | null,
     schema: QueryRow[],
-    columnMetrics: Map<string, ColumnMetric>
+    selectedColumnMetric: ColumnMetric | null
   ): Promise<ExplorerPayload> {
     const columnSchema =
       schema.find((column) => String(column.column_name ?? "") === selectedColumn) ??
@@ -445,8 +453,7 @@ export class DuckDBService {
 
     const effectiveColumn = String(columnSchema.column_name ?? "");
     const columnType = String(columnSchema.column_type ?? "");
-    const metric = columnMetrics.get(effectiveColumn);
-    const view = chooseExplorerView(columnType, metric);
+    const view = chooseExplorerView(columnType, selectedColumnMetric ?? undefined);
 
     if (view === "histogram") {
       const histogram = await numericHistogram(connection, effectiveColumn);
@@ -469,46 +476,28 @@ export class DuckDBService {
     };
   }
 
-  private async buildColumnMetrics(
+  private async buildColumnMetric(
     connection: DuckDBConnection,
-    schema: QueryRow[]
-  ): Promise<Map<string, ColumnMetric>> {
-    const columnNames = schema
-      .map((column) => String(column.column_name ?? ""))
-      .filter(Boolean);
-
-    if (!columnNames.length) {
-      return new Map();
-    }
-
-    const selectExpressions = ["count(*)::BIGINT AS total_rows"];
-    for (const [index, columnName] of columnNames.entries()) {
-      const column = quoteIdentifier(columnName);
-      selectExpressions.push(`count(DISTINCT ${column})::BIGINT AS column_${index}_distinct`);
-      selectExpressions.push(`count(*) FILTER (WHERE ${column} IS NULL)::BIGINT AS column_${index}_nulls`);
-    }
-
+    columnName: string
+  ): Promise<ColumnMetric> {
+    const column = quoteIdentifier(columnName);
     const rows = await queryRows<QueryRow>(
       connection,
       `
         SELECT
-          ${selectExpressions.join(",\n          ")}
+          count(*)::BIGINT AS total_rows,
+          count(DISTINCT ${column})::BIGINT AS distinct_count,
+          count(*) FILTER (WHERE ${column} IS NULL)::BIGINT AS null_count
         FROM ${DEFAULT_TABLE_ALIAS}
       `
     );
 
     const row = rows[0] ?? {};
-    const totalCount = Number(row.total_rows) || 0;
-    return new Map(
-      columnNames.map((columnName, index) => [
-        columnName,
-        {
-          distinctCount: Number(row[`column_${index}_distinct`]) || 0,
-          nullCount: Number(row[`column_${index}_nulls`]) || 0,
-          totalCount
-        }
-      ])
-    );
+    return {
+      distinctCount: Number(row.distinct_count) || 0,
+      nullCount: Number(row.null_count) || 0,
+      totalCount: Number(row.total_rows) || 0
+    };
   }
 
   private async withConnection<T>(work: (connection: DuckDBConnection) => Promise<T>): Promise<T> {
@@ -740,16 +729,30 @@ function buildSummaryTableRows(summaryRows: QueryRow[]): string[][] {
   ]);
 }
 
-function buildColumns(summaryRows: QueryRow[], columnMetrics: Map<string, ColumnMetric>): ColumnSummary[] {
-  return summaryRows.map((row) => ({
-    name: stringValue(row.column_name),
-    type: stringValue(row.column_type),
-    distinctCount: formatNumber(columnMetrics.get(stringValue(row.column_name))?.distinctCount),
-    nullPercentage: formatNullPercentageFromMetric(columnMetrics.get(stringValue(row.column_name))),
-    nullDisplay: displayNullValue(columnMetrics.get(stringValue(row.column_name))),
-    distinctDisplay: displayDistinctValue(columnMetrics.get(stringValue(row.column_name))),
-    summary: summarySummary(row, columnMetrics.get(stringValue(row.column_name)))
-  }));
+function buildColumns(
+  summaryRows: QueryRow[],
+  selectedColumn: string | null,
+  selectedColumnMetric: ColumnMetric | null
+): ColumnSummary[] {
+  return summaryRows.map((row) => {
+    const columnName = stringValue(row.column_name);
+    const metric = selectedColumnMetric && selectedColumn === columnName
+      ? selectedColumnMetric
+      : undefined;
+    const nullPercentage = metric
+      ? formatNullPercentageFromMetric(metric)
+      : formatNullPercentage(row.null_percentage);
+
+    return {
+      name: columnName,
+      type: stringValue(row.column_type),
+      distinctCount: metric ? formatNumber(metric.distinctCount) : "Select column to compute exact values.",
+      nullPercentage,
+      nullDisplay: displayNullValue(nullPercentage),
+      distinctDisplay: metric ? displayDistinctValue(metric) : "…",
+      summary: summarySummary(row, metric)
+    };
+  });
 }
 
 function summarySummary(row: QueryRow, metric?: ColumnMetric): string {
@@ -772,12 +775,18 @@ function displayDistinctValue(metric?: ColumnMetric): string {
   return formatNumber(metric.distinctCount);
 }
 
-function displayNullValue(metric?: ColumnMetric): string {
-  const formatted = formatNullPercentageFromMetric(metric);
+function displayNullValue(formatted: string): string {
   if (!formatted) {
     return "–";
   }
-  return formatted === "0%" ? "–" : formatted;
+  const normalized = formatted.trim().endsWith("%")
+    ? formatted.trim().slice(0, -1).replace(/,/g, "")
+    : formatted.trim().replace(/,/g, "");
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && numeric === 0) {
+    return "–";
+  }
+  return formatted;
 }
 
 function extractStat(stats: StatEntry[], label: string): string {

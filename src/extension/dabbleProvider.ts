@@ -261,7 +261,8 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
       case "selectTable":
         controller.state.source = {
           ...controller.state.source,
-          selectedTable: message.tableName
+          selectedTable: message.tableName,
+          selectedColumn: null
         };
         await this.refreshPanel(panel, controller);
         return;

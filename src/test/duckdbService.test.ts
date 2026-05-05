@@ -95,9 +95,18 @@ test("loadSource parquet returns correct shape", async () => {
   assert.equal(result.payload.stats.find(([k]) => k === "Rows")?.[1], "5");
 });
 
-test("loadSource parquet selects a numeric column for explorer", async () => {
+test("loadSource parquet selects a numeric column and defers explorer details until explicit column selection", async () => {
   const svc = new DuckDBService();
   const result = await svc.loadSource(source("parquet", parquetPath));
+
+  assert.equal(result.source.selectedColumn, "id");
+  assert.equal(result.payload.explorer.title, "");
+  assert.equal(result.payload.explorer.distributionRows.length, 0);
+});
+
+test("loadSource parquet computes explorer details when a column is explicitly selected", async () => {
+  const svc = new DuckDBService();
+  const result = await svc.loadSource({ ...source("parquet", parquetPath), selectedColumn: "id" });
 
   assert.equal(result.source.selectedColumn, "id");
   assert.equal(result.payload.explorer.view, "topValues");
@@ -117,7 +126,7 @@ test("loadSource parquet uses exact distinct counts and full-column percentages 
 
   try {
     const svc = new DuckDBService();
-    const result = await svc.loadSource(source("parquet", generated.path));
+    const result = await svc.loadSource({ ...source("parquet", generated.path), selectedColumn: "source_report_id" });
     const column = result.payload.columns.find((entry) => entry.name === "source_report_id");
 
     assert.equal(result.source.selectedColumn, "source_report_id");
@@ -140,7 +149,7 @@ test("loadSource parquet uses histogram view for high-cardinality numeric column
 
   try {
     const svc = new DuckDBService();
-    const result = await svc.loadSource(source("parquet", generated.path));
+    const result = await svc.loadSource({ ...source("parquet", generated.path), selectedColumn: "numeric_id" });
 
     assert.equal(result.source.selectedColumn, "numeric_id");
     assert.equal(result.payload.explorer.view, "histogram");
