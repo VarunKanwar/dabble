@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { DuckDBInstance } from "@duckdb/node-api";
-import { buildS3SecretSql, DuckDBService } from "../extension/duckdbService";
+import { buildS3SecretSql, DuckDBService, inferS3DataFormat } from "../extension/duckdbService";
 
 // __dirname resolves to dist/extension/test at runtime; fixtures live in src/test/fixtures
 const fixtures = join(__dirname, "../../../src/test/fixtures");
@@ -79,6 +79,17 @@ test("buildS3SecretSql targets a named AWS profile when one is provided", () => 
   assert.match(sql, /PROVIDER credential_chain/);
   assert.match(sql, /CHAIN config/);
   assert.match(sql, /PROFILE 'prod''o1'/);
+});
+
+test("inferS3DataFormat recognizes newline-delimited JSON files on S3", () => {
+  assert.equal(inferS3DataFormat("s3://bucket/events.jsonl"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.ndjson"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.jsonl.gz"), "jsonl");
+});
+
+test("inferS3DataFormat defaults to parquet datasets for non-JSONL S3 paths", () => {
+  assert.equal(inferS3DataFormat("s3://bucket/events.parquet"), "parquet");
+  assert.equal(inferS3DataFormat("s3://bucket/lake/year=2026/month=04/"), "parquet");
 });
 
 // --- loadSource: parquet ---

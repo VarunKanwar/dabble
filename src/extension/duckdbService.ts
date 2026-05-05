@@ -296,12 +296,16 @@ export class DuckDBService {
     }
 
     if (source.kind === "s3") {
+      const s3Format = inferS3DataFormat(source.path);
+      const selectedTable = s3Format === "jsonl" ? "remote_jsonl" : "remote_dataset";
       return {
-        selectedTable: "remote_dataset",
-        tables: ["remote_dataset"],
+        selectedTable,
+        tables: [selectedTable],
         title: stripTrailingSlash(source.path),
-        description: "The same summary flow, entered via connect source.",
-        tree: ["remote", "main", "remote_dataset", describeS3CredentialMode(source.s3Profile)],
+        description: s3Format === "jsonl"
+          ? "A newline-delimited JSON source opened via connect source."
+          : "The same summary flow, entered via connect source.",
+        tree: ["remote", "main", selectedTable, describeS3CredentialMode(source.s3Profile)],
         diagnostics: []
       };
     }
@@ -395,6 +399,19 @@ export class DuckDBService {
         ["Columns", String(columns)],
         ["Preview", String(previewLimit)],
         ["Source", "JSONL file"]
+      ];
+    }
+
+    if (source.kind === "s3" && inferS3DataFormat(source.path) === "jsonl") {
+      const countRows = await queryRows<{ row_count?: number }>(
+        connection,
+        `SELECT count(*)::BIGINT AS row_count FROM ${DEFAULT_TABLE_ALIAS}`
+      );
+      return [
+        ["Rows", formatNumber(countRows[0]?.row_count)],
+        ["Objects", "1"],
+        ["Preview", String(previewLimit)],
+        ["Source", "S3 JSONL file"]
       ];
     }
 
@@ -666,6 +683,10 @@ export function buildS3SecretSql(profile: string | null): string {
   `;
 }
 
+export function inferS3DataFormat(pathValue: string): "parquet" | "jsonl" {
+  return isS3JsonlPath(pathValue) ? "jsonl" : "parquet";
+}
+
 function describeS3CredentialMode(profile: string | null): string {
   return profile ? `profile ${profile}` : "automatic credentials";
 }
@@ -689,8 +710,15 @@ function buildRelationSql(source: SourceDescriptor): string {
     return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true)`;
   }
 
-  if (source.kind === "dataset" || source.kind === "s3") {
-    return `read_parquet('${escapeLiteral(buildParquetGlob(source.path, source.kind === "s3"))}', hive_partitioning = true, union_by_name = true)`;
+  if (source.kind === "dataset") {
+    return `read_parquet('${escapeLiteral(buildParquetGlob(source.path, false))}', hive_partitioning = true, union_by_name = true)`;
+  }
+
+  if (source.kind === "s3") {
+    if (inferS3DataFormat(source.path) === "jsonl") {
+      return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true)`;
+    }
+    return `read_parquet('${escapeLiteral(buildParquetGlob(source.path, true))}', hive_partitioning = true, union_by_name = true)`;
   }
 
   throw new Error(`Unsupported source kind: ${source.kind}`);
@@ -709,6 +737,10 @@ function buildParquetGlob(basePath: string, remote = false): string {
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/[\\/]+$/, "");
+}
+
+function isS3JsonlPath(pathValue: string): boolean {
+  return /\.(?:jsonl|ndjson)(?:\.(?:gz|zst))?$/i.test(stripTrailingSlash(pathValue));
 }
 
 function rowObjectsToArrays(headers: string[], rows: QueryRow[]): string[][] {
