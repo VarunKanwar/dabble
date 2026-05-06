@@ -111,6 +111,7 @@ test("loadSource parquet returns correct shape", async () => {
   assert.equal(result.payload.previewHeaders.join(","), "id,name,amount,ts");
   assert.equal(result.payload.previewRows.length, 5);
   assert.equal(result.payload.columns.length, 4);
+  assert.equal(result.payload.statsControl.status, "ready");
   assert.ok(result.payload.stats.find(([k]) => k === "Rows"), "stats missing Rows entry");
   assert.equal(result.payload.stats.find(([k]) => k === "Rows")?.[1], "5");
 });

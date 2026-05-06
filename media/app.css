@@ -331,6 +331,32 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.column-list-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.column-stats-inline {
+  font-size: 10px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.column-stats-action {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.column-stats-action:hover {
+  color: var(--text-strong);
+}
+
 .column-item {
   border-bottom: 1px solid var(--line-soft);
   overflow: hidden;

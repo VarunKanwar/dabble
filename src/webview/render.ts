@@ -194,7 +194,10 @@ function renderObjectExplorer(state: AppState): string {
 
       <div class="column-list-head">
         <span></span>
-        <span>Column</span>
+        <span class="column-list-title-cell">
+          <span>Column</span>
+          ${renderColumnStatsControl(state)}
+        </span>
         <span title="Exact unique values are computed when a column is selected">Unique</span>
         <span title="Null percentage">Null %</span>
       </div>
@@ -214,6 +217,23 @@ function renderObjectExplorer(state: AppState): string {
 
       ${renderColumnDetailPanel(explorer, showDetail, Boolean(openingName), Boolean(closingName))}
     </section>
+  `;
+}
+
+function renderColumnStatsControl(state: AppState): string {
+  const control = state.payload.statsControl;
+  if (!control || control.status === "ready") {
+    return "";
+  }
+  if (control.status === "loading") {
+    return `<span class="column-stats-inline">${escapeHtml(control.reason || "Loading stats...")}</span>`;
+  }
+  return `
+    <button
+      class="column-stats-inline column-stats-action"
+      data-action="compute-source-stats"
+      title="${escapeAttr(control.reason || "Compute full statistics on demand")}"
+    >Compute statistics</button>
   `;
 }
 

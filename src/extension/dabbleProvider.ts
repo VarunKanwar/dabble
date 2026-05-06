@@ -1,14 +1,24 @@
 import path from "path";
 import * as vscode from "vscode";
-import { createEmptyPayload, type ExtensionToWebviewMessage, type SourceDescriptor, type SourcePayload, type ViewMode } from "../shared/protocol";
+import {
+  createEmptyPayload,
+  type ExtensionToWebviewMessage,
+  type SourceDescriptor,
+  type SourcePayload,
+  type SourceStatsControl,
+  type ViewMode
+} from "../shared/protocol";
 import { DuckDBService, QuerySession, type ExactColumnMetric } from "./duckdbService";
 import { DEFAULT_PREVIEW_LIMIT, inferKindFromPath, normalizeIncomingSource, normalizePreviewLimit } from "./sourceUtils";
 import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
 import { parseWebviewMessage } from "./webviewMessage";
 import { DEFAULT_S3_SOURCE_FORMAT } from "../shared/sourceKinds";
+import { decideSourceStatsAutoCompute } from "../shared/sourceStatsPolicy";
 
 const VIEW_TYPE = "dabble.viewer";
 const JSONL_VIEW_TYPE = "dabble.viewer.jsonl";
+const COLUMN_METRIC_CONCURRENCY_LOCAL = 4;
+const COLUMN_METRIC_CONCURRENCY_S3 = 2;
 
 let providerInstance: DabbleProvider | null = null;
 
@@ -298,6 +308,9 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
         controller.state.mode = "clicked";
         await this.refreshPanel(panel, controller);
         return;
+      case "computeSourceStats":
+        await this.computeDeferredSourceStats(panel, controller);
+        return;
       default:
         return;
     }
@@ -323,15 +336,25 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
     controller.columnMetricRunId = runId;
     await this.disposeQuerySession(controller);
     await this.postMessage(panel, { type: "loading", loading: true });
+    const sourceSizeBytes = await this.duckdb.estimateSourceSizeBytes(controller.state.source);
+    const statsDecision = decideSourceStatsAutoCompute(controller.state.source.kind, sourceSizeBytes);
     const result = await this.duckdb.loadSource(controller.state.source, {
-      previewLimit: controller.state.previewLimit
+      previewLimit: controller.state.previewLimit,
+      deferStatsComputation: statsDecision.shouldDefer
     });
     controller.state.source = result.source;
     const tableKey = sourceTableKey(result.source);
     const cachedMetrics = controller.columnMetricsByTable.get(tableKey);
-    const payload = cachedMetrics?.size
+    const basePayload = cachedMetrics?.size
       ? applyCachedColumnMetrics(this.duckdb, result.payload, cachedMetrics)
       : result.payload;
+    const statsControl = statsDecision.shouldDefer
+      ? buildDeferredStatsControl(sourceSizeBytes, statsDecision.maxBytes)
+      : buildReadyStatsControl();
+    const payload: SourcePayload = {
+      ...basePayload,
+      statsControl
+    };
     controller.lastPayload = payload;
     panel.title = `Dabble: ${path.basename(result.source.path || "Source")}`;
     await this.postMessage(panel, {
@@ -346,10 +369,87 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
     const needsMetricsHydration =
       controller.state.mode === "clicked" &&
       payload.columns.length > 0 &&
+      payload.statsControl.status === "ready" &&
       (cachedMetrics?.size ?? 0) < payload.columns.length;
 
     if (needsMetricsHydration) {
       this.hydrateColumnMetrics(panel, controller, result.source, payload.columns, tableKey, runId);
+    }
+  }
+
+  private async computeDeferredSourceStats(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {
+    const payload = controller.lastPayload;
+    if (!payload) {
+      return;
+    }
+    if (payload.statsControl.status !== "deferred") {
+      return;
+    }
+
+    const runId = controller.columnMetricRunId + 1;
+    controller.columnMetricRunId = runId;
+    const tableKey = sourceTableKey(controller.state.source);
+    const loadingControl = buildLoadingStatsControl();
+    controller.lastPayload = {
+      ...payload,
+      statsControl: loadingControl
+    };
+    await this.postMessage(panel, {
+      type: "sourceStatsControlData",
+      source: controller.state.source,
+      statsControl: loadingControl
+    });
+    let result: Awaited<ReturnType<DuckDBService["computeSourceStats"]>>;
+    try {
+      result = await this.duckdb.computeSourceStats(controller.state.source, {
+        previewLimit: controller.state.previewLimit
+      });
+    } catch (error) {
+      const fallbackControl = payload.statsControl;
+      controller.lastPayload = controller.lastPayload
+        ? {
+            ...controller.lastPayload,
+            statsControl: fallbackControl
+          }
+        : controller.lastPayload;
+      await this.postMessage(panel, {
+        type: "sourceStatsControlData",
+        source: controller.state.source,
+        statsControl: fallbackControl
+      });
+      throw error;
+    }
+    if (controller.columnMetricRunId !== runId) {
+      return;
+    }
+    controller.state.source = result.source;
+    const nextPayload = controller.lastPayload
+      ? {
+          ...controller.lastPayload,
+          stats: result.stats,
+          rowCountLabel: result.rowCountLabel,
+          statsControl: buildReadyStatsControl()
+        }
+      : null;
+    if (!nextPayload) {
+      return;
+    }
+    controller.lastPayload = nextPayload;
+    await this.postMessage(panel, {
+      type: "sourceStatsData",
+      source: controller.state.source,
+      stats: result.stats,
+      rowCountLabel: result.rowCountLabel,
+      statsControl: nextPayload.statsControl
+    });
+
+    const cachedMetrics = controller.columnMetricsByTable.get(tableKey);
+    const needsMetricsHydration =
+      controller.state.mode === "clicked" &&
+      nextPayload.columns.length > 0 &&
+      (cachedMetrics?.size ?? 0) < nextPayload.columns.length;
+    if (needsMetricsHydration) {
+      this.hydrateColumnMetrics(panel, controller, controller.state.source, nextPayload.columns, tableKey, runId);
     }
   }
 
@@ -389,11 +489,39 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
     const tableMetrics = controller.columnMetricsByTable.get(tableKey) ?? new Map<string, ExactColumnMetric>();
     controller.columnMetricsByTable.set(tableKey, tableMetrics);
 
-    for (const column of columns) {
-      if (tableMetrics.has(column.name)) {
-        continue;
+    const pendingColumns = columns
+      .map((column) => column.name)
+      .filter((columnName) => !tableMetrics.has(columnName));
+    if (pendingColumns.length === 0) {
+      return;
+    }
+
+    const workerCount = Math.min(
+      pendingColumns.length,
+      source.kind === "s3" ? COLUMN_METRIC_CONCURRENCY_S3 : COLUMN_METRIC_CONCURRENCY_LOCAL
+    );
+    for (let index = 0; index < workerCount; index += 1) {
+      void this.runColumnMetricWorker(panel, controller, source, tableKey, runId, pendingColumns);
+    }
+  }
+
+  private async runColumnMetricWorker(
+    panel: vscode.WebviewPanel,
+    controller: PanelController,
+    source: SourceDescriptor,
+    tableKey: string,
+    runId: number,
+    pendingColumns: string[]
+  ): Promise<void> {
+    while (pendingColumns.length > 0) {
+      if (controller.columnMetricRunId !== runId || sourceTableKey(controller.state.source) !== tableKey) {
+        return;
       }
-      void this.loadAndPublishColumnMetric(panel, controller, source, tableKey, runId, column.name);
+      const columnName = pendingColumns.shift();
+      if (!columnName) {
+        return;
+      }
+      await this.loadAndPublishColumnMetric(panel, controller, source, tableKey, runId, columnName);
     }
   }
 
@@ -540,6 +668,57 @@ function viewTypeForResource(resource: vscode.Uri): string {
 
 function formatMegabytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(2);
+}
+
+function buildReadyStatsControl(): SourceStatsControl {
+  return {
+    status: "ready",
+    reason: ""
+  };
+}
+
+function buildLoadingStatsControl(): SourceStatsControl {
+  return {
+    status: "loading",
+    reason: "Loading stats..."
+  };
+}
+
+function buildDeferredStatsControl(sourceSizeBytes: number | null, maxBytes: number | null): SourceStatsControl {
+  if (maxBytes == null) {
+    return {
+      status: "deferred",
+      reason: "Compute full stats on demand."
+    };
+  }
+
+  const thresholdLabel = formatByteSize(maxBytes);
+  if (sourceSizeBytes == null) {
+    return {
+      status: "deferred",
+      reason: `Auto stats paused for unknown-size sources above ${thresholdLabel}.`
+    };
+  }
+
+  return {
+    status: "deferred",
+    reason: `Auto stats paused at ${formatByteSize(sourceSizeBytes)} (limit ${thresholdLabel}).`
+  };
+}
+
+function formatByteSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unitIndex = 0;
+  let value = bytes;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${units[unitIndex]}`;
 }
 
 function sourceTableKey(source: SourceDescriptor): string {

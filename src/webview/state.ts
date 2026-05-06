@@ -182,6 +182,28 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
         },
         error: ""
       };
+    case "sourceStatsControlData":
+      return {
+        ...current,
+        source: message.source,
+        payload: {
+          ...current.payload,
+          statsControl: message.statsControl
+        },
+        error: ""
+      };
+    case "sourceStatsData":
+      return {
+        ...current,
+        source: message.source,
+        payload: {
+          ...current.payload,
+          stats: message.stats,
+          rowCountLabel: message.rowCountLabel,
+          statsControl: message.statsControl
+        },
+        error: ""
+      };
     case "queryResult":
       return {
         ...current,

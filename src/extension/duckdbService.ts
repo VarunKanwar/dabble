@@ -8,6 +8,7 @@ import {
   type ExplorerPayload,
   type LoadSourceResult,
   type QueryResult,
+  type SourceStatsControl,
   type S3SourceFormat,
   type SourceDescriptor,
   type StatEntry
@@ -22,6 +23,7 @@ const QUERY_PAGE_ROW_TARGET = 2048;
 const TOP_VALUES_ROW_LIMIT = 6;
 const NUMERIC_TOP_VALUES_DISTINCT_THRESHOLD = 12;
 const NUMERIC_HISTOGRAM_BUCKET_COUNT = 6;
+const S3_NDJSON_SCHEMA_SAMPLE_SIZE = 2048;
 
 type QueryRow = Record<string, unknown>;
 
@@ -54,24 +56,39 @@ export interface ExactColumnMetric {
 export class DuckDBService {
   private instancePromise: Promise<DuckDBInstance> | null = null;
 
-  async loadSource(source: SourceDescriptor, options: { previewLimit?: number } = {}): Promise<LoadSourceResult> {
+  async loadSource(
+    source: SourceDescriptor,
+    options: { previewLimit?: number; deferStatsComputation?: boolean } = {}
+  ): Promise<LoadSourceResult> {
     const normalized = normalizeSource(source);
     return this.withSourceConnection(normalized, async (connection) => {
       await this.prepareEnvironment(connection, normalized);
       const context = await this.prepareSourceContext(connection, normalized);
       const previewLimit = normalizePreviewLimit(options.previewLimit);
       const schema = await this.describeRelation(connection);
-      const summaryRows = await this.summarizeRelation(connection);
+      const shouldSkipExpensiveStats = Boolean(options.deferStatsComputation) || isS3JsonlSource(normalized);
+      const summaryRows = shouldSkipExpensiveStats
+        ? buildSummaryRowsFromSchema(schema)
+        : await this.summarizeRelation(connection);
       const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
       const shouldLoadSelectedColumnDetails = Boolean(normalized.selectedColumn && selectedColumn);
       const selectedColumnMetric: ColumnMetric | null = null;
       const preview = await this.previewRelation(connection, previewLimit);
-      const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
+      const stats = await this.buildStats(connection, normalized, context, schema, previewLimit, {
+        skipExpensiveRowCount: shouldSkipExpensiveStats
+      });
       const explorer = shouldLoadSelectedColumnDetails
         ? await this.buildExplorer(connection, selectedColumn, schema, selectedColumnMetric)
         : createEmptyExplorer();
       const editorQuery = buildDefaultQuery();
-      const queryResult = await executeReadonlyQuery(connection, editorQuery);
+      const queryResult: QueryResult = {
+        sql: editorQuery,
+        headers: preview.headers,
+        rows: preview.rows,
+        summary: buildQuerySummaryFromStringRows(preview.headers, preview.rows),
+        loadedRowCount: preview.rows.length,
+        done: true
+      };
 
       return {
         source: {
@@ -99,9 +116,64 @@ export class DuckDBService {
           queryRows: queryResult.rows,
           querySummary: queryResult.summary,
           explorer,
-          diagnostics: context.diagnostics
+          diagnostics: context.diagnostics,
+          statsControl: buildReadyStatsControl()
         }
       };
+    });
+  }
+
+  async computeSourceStats(
+    source: SourceDescriptor,
+    options: { previewLimit?: number } = {}
+  ): Promise<{ source: SourceDescriptor; stats: StatEntry[]; rowCountLabel: string }> {
+    const normalized = normalizeSource(source);
+    return this.withSourceConnection(normalized, async (connection) => {
+      await this.prepareEnvironment(connection, normalized);
+      const context = await this.prepareSourceContext(connection, normalized);
+      const previewLimit = normalizePreviewLimit(options.previewLimit);
+      const schema = await this.describeRelation(connection);
+      const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
+      const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
+
+      return {
+        source: {
+          ...normalized,
+          selectedTable: context.selectedTable,
+          selectedColumn
+        },
+        stats,
+        rowCountLabel: extractStat(stats, "Rows") || extractStat(stats, "Objects") || ""
+      };
+    });
+  }
+
+  async estimateSourceSizeBytes(source: SourceDescriptor): Promise<number | null> {
+    const normalized = normalizeSource(source);
+
+    if (normalized.kind !== "s3") {
+      if (normalized.kind === "dataset") {
+        return null;
+      }
+      return safeLocalFileSize(normalized.path);
+    }
+
+    if (/[\\/]$/.test(normalized.path)) {
+      return null;
+    }
+
+    return this.withSourceConnection(normalized, async (connection) => {
+      await this.prepareEnvironment(connection, normalized);
+      try {
+        const rows = await queryRows<{ size_bytes?: number }>(
+          connection,
+          `SELECT max(size)::BIGINT AS size_bytes FROM read_blob('${escapeLiteral(stripTrailingSlash(normalized.path))}')`
+        );
+        const size = Number(rows[0]?.size_bytes);
+        return Number.isFinite(size) && size > 0 ? size : null;
+      } catch {
+        return null;
+      }
     });
   }
 
@@ -403,7 +475,10 @@ export class DuckDBService {
     source: SourceDescriptor,
     context: SourceContext,
     schema: QueryRow[],
-    previewLimit: number
+    previewLimit: number,
+    options: {
+      skipExpensiveRowCount?: boolean;
+    } = {}
   ): Promise<StatEntry[]> {
     const columns = schema.length;
 
@@ -434,6 +509,15 @@ export class DuckDBService {
     }
 
     if (source.kind === "jsonl") {
+      if (options.skipExpensiveRowCount) {
+        return [
+          ["Rows", "Unknown"],
+          ["Columns", String(columns)],
+          ["Preview", String(previewLimit)],
+          ["Source", "JSONL file"]
+        ];
+      }
+
       const countRows = await queryRows<{ row_count?: number }>(
         connection,
         `SELECT count(*)::BIGINT AS row_count FROM ${DEFAULT_TABLE_ALIAS}`
@@ -447,6 +531,15 @@ export class DuckDBService {
     }
 
     if (source.kind === "s3" && inferS3DataFormat(source.path, source.s3Format ?? null) === "jsonl") {
+      if (options.skipExpensiveRowCount) {
+        return [
+          ["Rows", "Unknown"],
+          ["Objects", "1"],
+          ["Preview", String(previewLimit)],
+          ["Source", "S3 JSONL file"]
+        ];
+      }
+
       const countRows = await queryRows<{ row_count?: number }>(
         connection,
         `SELECT count(*)::BIGINT AS row_count FROM ${DEFAULT_TABLE_ALIAS}`
@@ -766,7 +859,7 @@ function buildRelationSql(source: SourceDescriptor): string {
 
   if (source.kind === "s3") {
     if (inferS3DataFormat(source.path, source.s3Format ?? null) === "jsonl") {
-      return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true)`;
+      return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true, sample_size = ${S3_NDJSON_SCHEMA_SAMPLE_SIZE})`;
     }
     return `read_parquet('${escapeLiteral(buildParquetGlob(source.path, true))}', hive_partitioning = true, union_by_name = true)`;
   }
@@ -815,6 +908,18 @@ function isS3JsonlPath(pathValue: string): boolean {
 
   const extension = segments[segments.length - 1];
   return extension === "jsonl" || extension === "ndjson";
+}
+
+function isS3JsonlSource(source: SourceDescriptor): boolean {
+  return source.kind === "s3" && inferS3DataFormat(source.path, source.s3Format ?? null) === "jsonl";
+}
+
+function buildSummaryRowsFromSchema(schema: QueryRow[]): QueryRow[] {
+  return schema.map((column) => ({
+    column_name: String(column.column_name ?? ""),
+    column_type: String(column.column_type ?? ""),
+    null_percentage: null
+  }));
 }
 
 function rowObjectsToArrays(headers: string[], rows: QueryRow[]): string[][] {
@@ -952,6 +1057,22 @@ function formatNullDetail(metric?: ColumnMetric): string {
   return `${formatNumber(metric.nullCount)} (${formatNullPercentageFromMetric(metric) || "0%"})`;
 }
 
+function buildReadyStatsControl(): SourceStatsControl {
+  return {
+    status: "ready",
+    reason: ""
+  };
+}
+
+function safeLocalFileSize(filePath: string): number | null {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.isFile() ? stats.size : null;
+  } catch {
+    return null;
+  }
+}
+
 function pickSelectedColumn(schema: QueryRow[], preferred: string | null): string | null {
   const names = schema.map((column) => String(column.column_name ?? "")).filter(Boolean);
   if (preferred && names.includes(preferred)) {
@@ -989,6 +1110,17 @@ function buildQuerySummary(headers: string[], rows: QueryRow[]): StatEntry[] {
 
   return headers.slice(0, 3).map((header) => {
     const samples = rows.slice(0, 3).map((row) => stringValue(row[header])).join(", ");
+    return [header, `Sample values: ${samples}`];
+  });
+}
+
+function buildQuerySummaryFromStringRows(headers: string[], rows: string[][]): StatEntry[] {
+  if (rows.length === 0) {
+    return [["Result", "No rows returned"]];
+  }
+
+  return headers.slice(0, 3).map((header, columnIndex) => {
+    const samples = rows.slice(0, 3).map((row) => row[columnIndex] ?? "").join(", ");
     return [header, `Sample values: ${samples}`];
   });
 }

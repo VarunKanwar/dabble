@@ -14,6 +14,9 @@ test("parseWebviewMessage accepts valid messages", () => {
   assert.deepEqual(parseWebviewMessage({ type: "loadAllQueryRows" }), {
     type: "loadAllQueryRows"
   });
+  assert.deepEqual(parseWebviewMessage({ type: "computeSourceStats" }), {
+    type: "computeSourceStats"
+  });
   assert.deepEqual(parseWebviewMessage({ type: "browseLocal", kind: "dataset" }), {
     type: "browseLocal",
     kind: "dataset"

@@ -15,6 +15,8 @@ export function parseWebviewMessage(message: unknown): WebviewToExtensionMessage
       return { type: "loadMoreQueryRows" };
     case "loadAllQueryRows":
       return { type: "loadAllQueryRows" };
+    case "computeSourceStats":
+      return { type: "computeSourceStats" };
     case "selectColumn":
       return typeof message.columnName === "string"
         ? { type: "selectColumn", columnName: message.columnName }

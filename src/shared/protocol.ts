@@ -21,6 +21,12 @@ export interface IncomingSourceSelection {
 }
 
 export type StatEntry = [label: string, value: string];
+export type SourceStatsStatus = "ready" | "deferred" | "loading";
+
+export interface SourceStatsControl {
+  status: SourceStatsStatus;
+  reason: string;
+}
 
 export interface ColumnSummary {
   name: string;
@@ -76,6 +82,7 @@ export interface SourcePayload {
   querySummary: StatEntry[];
   explorer: ExplorerPayload;
   diagnostics: string[];
+  statsControl: SourceStatsControl;
 }
 
 export interface LoadSourceResult {
@@ -97,7 +104,8 @@ export type WebviewToExtensionMessage =
   | { type: "selectTable"; tableName: string }
   | { type: "switchMode"; mode: ViewMode }
   | { type: "browseLocal"; kind: LocalSourceKind }
-  | { type: "openSource"; source: IncomingSourceSelection };
+  | { type: "openSource"; source: IncomingSourceSelection }
+  | { type: "computeSourceStats" };
 
 export type ExtensionToWebviewMessage =
   | {
@@ -117,6 +125,18 @@ export type ExtensionToWebviewMessage =
       type: "columnMetricsData";
       source: SourceDescriptor;
       columns: ColumnSummary[];
+    }
+  | {
+      type: "sourceStatsControlData";
+      source: SourceDescriptor;
+      statsControl: SourceStatsControl;
+    }
+  | {
+      type: "sourceStatsData";
+      source: SourceDescriptor;
+      stats: StatEntry[];
+      rowCountLabel: string;
+      statsControl: SourceStatsControl;
     }
   | { type: "queryResult"; query: QueryResult; append: boolean }
   | { type: "error"; message: string }
@@ -154,6 +174,10 @@ export function createEmptyPayload(): SourcePayload {
     queryRows: [],
     querySummary: [],
     explorer: createEmptyExplorer(),
-    diagnostics: []
+    diagnostics: [],
+    statsControl: {
+      status: "ready",
+      reason: ""
+    }
   };
 }

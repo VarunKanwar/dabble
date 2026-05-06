@@ -189,6 +189,9 @@ class DabbleApp {
           }
         });
         return;
+      case "compute-source-stats":
+        this.postMessage({ type: "computeSourceStats" });
+        return;
       case "close-cell-viewer":
         this.state = closeCellViewer(this.state);
         this.render();

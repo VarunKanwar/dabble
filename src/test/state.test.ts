@@ -282,6 +282,59 @@ test("columnMetricsData patches only column stats and keeps explorer state intac
   assert.equal(next.queryResult.rows.length, seeded.queryResult.rows.length);
 });
 
+test("sourceStatsData updates row-count stats without replacing query results", () => {
+  const seeded = applyExtensionMessage(createInitialState(), {
+    type: "sourceData",
+    mode: "clicked",
+    previewLimit: 100,
+    source: {
+      kind: "s3",
+      path: "s3://bucket/events.jsonl.out",
+      selectedTable: "remote_jsonl",
+      selectedColumn: null,
+      s3Profile: null,
+      s3Format: "jsonl"
+    },
+    payload: {
+      ...createEmptyPayload(),
+      rowCountLabel: "",
+      stats: [["Rows", "Unknown"]],
+      statsControl: {
+        status: "deferred",
+        reason: "Auto stats paused."
+      },
+      queryHeaders: ["id"],
+      queryRows: [["1"]]
+    }
+  });
+
+  const loading = applyExtensionMessage(seeded, {
+    type: "sourceStatsControlData",
+    source: seeded.source!,
+    statsControl: {
+      status: "loading",
+      reason: "Loading stats..."
+    }
+  });
+  assert.equal(loading.payload.statsControl.status, "loading");
+
+  const next = applyExtensionMessage(loading, {
+    type: "sourceStatsData",
+    source: loading.source!,
+    stats: [["Rows", "1,000"]],
+    rowCountLabel: "1,000",
+    statsControl: {
+      status: "ready",
+      reason: ""
+    }
+  });
+
+  assert.equal(next.payload.rowCountLabel, "1,000");
+  assert.equal(next.payload.stats[0][1], "1,000");
+  assert.equal(next.payload.statsControl.status, "ready");
+  assert.equal(next.queryResult.rows.length, 1);
+});
+
 test("cell viewer opens and closes with explicit state transitions", () => {
   const initial = createInitialState();
   const opened = openCellViewer(initial, {
