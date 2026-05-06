@@ -19,6 +19,7 @@ test("createInitialState leaves the S3 profile blank for automatic credentials",
   const state = createInitialState();
 
   assert.equal(state.form.s3Profile, "");
+  assert.equal(state.form.s3Format, "auto");
 });
 
 test("sourceData defaults to collapsed and expands on same-table column selection", () => {
@@ -80,6 +81,7 @@ test("sourceData defaults to collapsed and expands on same-table column selectio
 test("sourceData keeps the S3 profile blank when the source uses automatic credentials", () => {
   const initial = createInitialState();
   initial.form.s3Profile = "analytics";
+  initial.form.s3Format = "jsonl";
 
   const next = applyExtensionMessage(initial, {
     type: "sourceData",
@@ -96,6 +98,29 @@ test("sourceData keeps the S3 profile blank when the source uses automatic crede
   });
 
   assert.equal(next.form.s3Profile, "");
+  assert.equal(next.form.s3Format, "auto");
+});
+
+test("sourceData hydrates explicit S3 format selection from source state", () => {
+  const initial = createInitialState();
+
+  const next = applyExtensionMessage(initial, {
+    type: "sourceData",
+    mode: "clicked",
+    previewLimit: 100,
+    source: {
+      kind: "s3",
+      path: "s3://bucket/events.jsonl.out",
+      selectedTable: "remote_jsonl",
+      selectedColumn: null,
+      s3Profile: "analytics",
+      s3Format: "jsonl"
+    },
+    payload: createEmptyPayload()
+  });
+
+  assert.equal(next.form.s3Profile, "analytics");
+  assert.equal(next.form.s3Format, "jsonl");
 });
 
 test("sourceData sets localType to jsonl for JSONL sources", () => {

@@ -1,5 +1,6 @@
-export type SourceKind = "parquet" | "jsonl" | "dataset" | "sqlite" | "duckdb" | "s3";
-export type LocalSourceKind = Exclude<SourceKind, "s3">;
+import type { LocalSourceKind, S3SourceFormat, SourceKind } from "./sourceKinds";
+
+export type { LocalSourceKind, S3SourceFormat, SourceKind } from "./sourceKinds";
 export type ViewMode = "clicked" | "connect";
 export type MainTab = "preview" | "query";
 
@@ -9,12 +10,14 @@ export interface SourceDescriptor {
   selectedTable: string | null;
   selectedColumn: string | null;
   s3Profile: string | null;
+  s3Format?: S3SourceFormat | null;
 }
 
 export interface IncomingSourceSelection {
   localType?: LocalSourceKind;
   path?: string;
   s3Profile?: string | null;
+  s3Format?: S3SourceFormat;
 }
 
 export type StatEntry = [label: string, value: string];

@@ -1,4 +1,5 @@
-import type { LocalSourceKind, ViewMode, WebviewToExtensionMessage } from "../shared/protocol";
+import type { ViewMode, WebviewToExtensionMessage } from "../shared/protocol";
+import { isLocalSourceKind, isS3SourceFormat } from "../shared/sourceKinds";
 
 export function parseWebviewMessage(message: unknown): WebviewToExtensionMessage | null {
   if (!isRecord(message) || typeof message.type !== "string") {
@@ -35,7 +36,8 @@ export function parseWebviewMessage(message: unknown): WebviewToExtensionMessage
         source: {
           localType: isLocalSourceKind(message.source.localType) ? message.source.localType : undefined,
           path: typeof message.source.path === "string" ? message.source.path : undefined,
-          s3Profile: typeof message.source.s3Profile === "string" ? message.source.s3Profile : null
+          s3Profile: typeof message.source.s3Profile === "string" ? message.source.s3Profile : null,
+          s3Format: isS3SourceFormat(message.source.s3Format) ? message.source.s3Format : undefined
         }
       };
     default:
@@ -49,8 +51,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isViewMode(value: unknown): value is ViewMode {
   return value === "clicked" || value === "connect";
-}
-
-function isLocalSourceKind(value: unknown): value is LocalSourceKind {
-  return value === "parquet" || value === "jsonl" || value === "dataset" || value === "sqlite" || value === "duckdb";
 }

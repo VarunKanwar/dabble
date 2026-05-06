@@ -22,7 +22,8 @@ test("normalizeIncomingSource keeps S3 sources remote", () => {
     path: "s3://bucket/path",
     selectedTable: null,
     selectedColumn: null,
-    s3Profile: "analytics"
+    s3Profile: "analytics",
+    s3Format: "auto"
   });
 });
 
@@ -32,7 +33,19 @@ test("normalizeIncomingSource treats a blank S3 profile as automatic credentials
     path: "s3://bucket/path",
     selectedTable: null,
     selectedColumn: null,
-    s3Profile: null
+    s3Profile: null,
+    s3Format: "auto"
+  });
+});
+
+test("normalizeIncomingSource accepts explicit S3 format overrides", () => {
+  assert.deepEqual(normalizeIncomingSource({ path: "s3://bucket/path", s3Format: "jsonl" }), {
+    kind: "s3",
+    path: "s3://bucket/path",
+    selectedTable: null,
+    selectedColumn: null,
+    s3Profile: null,
+    s3Format: "jsonl"
   });
 });
 
@@ -42,7 +55,8 @@ test("normalizeIncomingSource infers local kinds and initializes optional state"
     path: "/tmp/local.duckdb",
     selectedTable: null,
     selectedColumn: null,
-    s3Profile: null
+    s3Profile: null,
+    s3Format: null
   });
 });
 

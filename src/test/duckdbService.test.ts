@@ -85,11 +85,20 @@ test("inferS3DataFormat recognizes newline-delimited JSON files on S3", () => {
   assert.equal(inferS3DataFormat("s3://bucket/events.jsonl"), "jsonl");
   assert.equal(inferS3DataFormat("s3://bucket/events.ndjson"), "jsonl");
   assert.equal(inferS3DataFormat("s3://bucket/events.jsonl.gz"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.jsonl.out"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.ndjson.out"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.ndjson.out.gz"), "jsonl");
 });
 
 test("inferS3DataFormat defaults to parquet datasets for non-JSONL S3 paths", () => {
   assert.equal(inferS3DataFormat("s3://bucket/events.parquet"), "parquet");
   assert.equal(inferS3DataFormat("s3://bucket/lake/year=2026/month=04/"), "parquet");
+});
+
+test("inferS3DataFormat honors explicit S3 format overrides", () => {
+  assert.equal(inferS3DataFormat("s3://bucket/events.parquet", "jsonl"), "jsonl");
+  assert.equal(inferS3DataFormat("s3://bucket/events.jsonl.out", "parquet"), "parquet");
+  assert.equal(inferS3DataFormat("s3://bucket/events.jsonl.out", "auto"), "jsonl");
 });
 
 // --- loadSource: parquet ---

@@ -5,6 +5,7 @@ import { DuckDBService, QuerySession, type ExactColumnMetric } from "./duckdbSer
 import { DEFAULT_PREVIEW_LIMIT, inferKindFromPath, normalizeIncomingSource, normalizePreviewLimit } from "./sourceUtils";
 import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
 import { parseWebviewMessage } from "./webviewMessage";
+import { DEFAULT_S3_SOURCE_FORMAT } from "../shared/sourceKinds";
 
 const VIEW_TYPE = "dabble.viewer";
 const JSONL_VIEW_TYPE = "dabble.viewer.jsonl";
@@ -97,7 +98,8 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
       path: document.uri.fsPath,
       selectedTable: null,
       selectedColumn: null,
-      s3Profile: null
+      s3Profile: null,
+      s3Format: null
     };
 
     await this.mountPanel(webviewPanel, {
@@ -122,7 +124,8 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
         path: "s3://acme-lake/orders/year=2026/month=04/",
         selectedTable: null,
         selectedColumn: null,
-        s3Profile: null
+        s3Profile: null,
+        s3Format: DEFAULT_S3_SOURCE_FORMAT
       },
       previewLimit: getPreviewLimit()
     });
@@ -148,7 +151,8 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
         path: target.fsPath,
         selectedTable: null,
         selectedColumn: null,
-        s3Profile: null
+        s3Profile: null,
+        s3Format: null
       },
       previewLimit: getPreviewLimit()
     });
@@ -539,7 +543,7 @@ function formatMegabytes(bytes: number): string {
 }
 
 function sourceTableKey(source: SourceDescriptor): string {
-  return [source.kind, source.path, source.selectedTable ?? "", source.s3Profile ?? ""].join("::");
+  return [source.kind, source.path, source.selectedTable ?? "", source.s3Profile ?? "", source.s3Format ?? ""].join("::");
 }
 
 function applyCachedColumnMetrics(

@@ -22,11 +22,25 @@ test("parseWebviewMessage accepts valid messages", () => {
     type: "browseLocal",
     kind: "jsonl"
   });
+  assert.deepEqual(
+    parseWebviewMessage({
+      type: "openSource",
+      source: { path: "s3://bucket/events.jsonl.out", s3Profile: "analytics", s3Format: "jsonl" }
+    }),
+    {
+      type: "openSource",
+      source: { path: "s3://bucket/events.jsonl.out", s3Profile: "analytics", s3Format: "jsonl", localType: undefined }
+    }
+  );
 });
 
 test("parseWebviewMessage rejects malformed messages", () => {
   assert.equal(parseWebviewMessage(null), null);
   assert.equal(parseWebviewMessage({ type: "runQuery", sql: 42 }), null);
   assert.equal(parseWebviewMessage({ type: "browseLocal", kind: "s3" }), null);
+  assert.deepEqual(parseWebviewMessage({ type: "openSource", source: { path: "s3://bucket/path", s3Format: "csv" } }), {
+    type: "openSource",
+    source: { localType: undefined, path: "s3://bucket/path", s3Profile: null, s3Format: undefined }
+  });
   assert.equal(parseWebviewMessage({ type: "selectTable" }), null);
 });

@@ -8,6 +8,7 @@ import {
   type ExplorerPayload,
   type LoadSourceResult,
   type QueryResult,
+  type S3SourceFormat,
   type SourceDescriptor,
   type StatEntry
 } from "../shared/protocol";
@@ -339,7 +340,7 @@ export class DuckDBService {
     }
 
     if (source.kind === "s3") {
-      const s3Format = inferS3DataFormat(source.path);
+      const s3Format = inferS3DataFormat(source.path, source.s3Format ?? null);
       const selectedTable = s3Format === "jsonl" ? "remote_jsonl" : "remote_dataset";
       return {
         selectedTable,
@@ -445,7 +446,7 @@ export class DuckDBService {
       ];
     }
 
-    if (source.kind === "s3" && inferS3DataFormat(source.path) === "jsonl") {
+    if (source.kind === "s3" && inferS3DataFormat(source.path, source.s3Format ?? null) === "jsonl") {
       const countRows = await queryRows<{ row_count?: number }>(
         connection,
         `SELECT count(*)::BIGINT AS row_count FROM ${DEFAULT_TABLE_ALIAS}`
@@ -726,7 +727,13 @@ export function buildS3SecretSql(profile: string | null): string {
   `;
 }
 
-export function inferS3DataFormat(pathValue: string): "parquet" | "jsonl" {
+export function inferS3DataFormat(
+  pathValue: string,
+  override: S3SourceFormat | null = "auto"
+): "parquet" | "jsonl" {
+  if (override === "jsonl" || override === "parquet") {
+    return override;
+  }
   return isS3JsonlPath(pathValue) ? "jsonl" : "parquet";
 }
 
@@ -758,7 +765,7 @@ function buildRelationSql(source: SourceDescriptor): string {
   }
 
   if (source.kind === "s3") {
-    if (inferS3DataFormat(source.path) === "jsonl") {
+    if (inferS3DataFormat(source.path, source.s3Format ?? null) === "jsonl") {
       return `read_ndjson('${escapeLiteral(source.path)}', auto_detect = true)`;
     }
     return `read_parquet('${escapeLiteral(buildParquetGlob(source.path, true))}', hive_partitioning = true, union_by_name = true)`;
@@ -783,7 +790,31 @@ function stripTrailingSlash(value: string): string {
 }
 
 function isS3JsonlPath(pathValue: string): boolean {
-  return /\.(?:jsonl|ndjson)(?:\.(?:gz|zst))?$/i.test(stripTrailingSlash(pathValue));
+  const filename = path.basename(stripTrailingSlash(pathValue));
+  if (!filename.includes(".")) {
+    return false;
+  }
+
+  const segments = filename
+    .split(".")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter(Boolean);
+  if (segments.length <= 1) {
+    return false;
+  }
+
+  const trailingMarkers = new Set(["out"]);
+  const compressionSuffixes = new Set(["gz", "zst"]);
+
+  while (segments.length > 1 && compressionSuffixes.has(segments[segments.length - 1])) {
+    segments.pop();
+  }
+  while (segments.length > 1 && trailingMarkers.has(segments[segments.length - 1])) {
+    segments.pop();
+  }
+
+  const extension = segments[segments.length - 1];
+  return extension === "jsonl" || extension === "ndjson";
 }
 
 function rowObjectsToArrays(headers: string[], rows: QueryRow[]): string[][] {

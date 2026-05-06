@@ -5,16 +5,24 @@ import {
   type MainTab,
   type PersistedUiState,
   type QueryResult,
+  type S3SourceFormat,
   type SourceDescriptor,
   type SourcePayload,
   type ViewMode
 } from "../shared/protocol.js";
+import {
+  DEFAULT_LOCAL_SOURCE_KIND,
+  DEFAULT_S3_SOURCE_FORMAT,
+  isLocalSourceKind as isKnownLocalSourceKind,
+  isS3SourceFormat as isKnownS3SourceFormat
+} from "../shared/sourceKinds.js";
 
 export interface ConnectFormState {
   localType: LocalSourceKind;
   localPath: string;
   s3Path: string;
   s3Profile: string;
+  s3Format: S3SourceFormat;
 }
 
 export type CellViewerTable = "preview" | "query";
@@ -52,7 +60,8 @@ export interface AppState {
 
 const DEFAULT_S3_PATH = "s3://acme-lake/orders/year=2026/month=04/";
 const DEFAULT_S3_PROFILE = "";
-const DEFAULT_LOCAL_TYPE: LocalSourceKind = "parquet";
+const DEFAULT_LOCAL_TYPE: LocalSourceKind = DEFAULT_LOCAL_SOURCE_KIND;
+const DEFAULT_S3_TYPE: S3SourceFormat = DEFAULT_S3_SOURCE_FORMAT;
 
 export function createInitialState(persisted: PersistedUiState = {}): AppState {
   return {
@@ -71,7 +80,8 @@ export function createInitialState(persisted: PersistedUiState = {}): AppState {
       localType: DEFAULT_LOCAL_TYPE,
       localPath: "",
       s3Path: DEFAULT_S3_PATH,
-      s3Profile: DEFAULT_S3_PROFILE
+      s3Profile: DEFAULT_S3_PROFILE,
+      s3Format: DEFAULT_S3_TYPE
     },
     ui: {
       sidebarWidth: clampNumber(persisted.sidebarWidth, 268, 520, 300),
@@ -112,7 +122,7 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
       const nextExpandedColumn = shouldExpandSelectedColumn ? message.source.selectedColumn : null;
       const nextLocalType = message.source.kind === "dataset"
         ? "dataset"
-        : isLocalSourceKind(message.source.kind)
+        : isKnownLocalSourceKind(message.source.kind)
           ? message.source.kind
           : current.form.localType;
       return {
@@ -137,7 +147,10 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
           localPath: isLocal ? message.source.path || current.form.localPath : current.form.localPath,
           localType: nextLocalType,
           s3Path: message.source.kind === "s3" ? message.source.path || current.form.s3Path : current.form.s3Path,
-          s3Profile: message.source.kind === "s3" ? message.source.s3Profile || "" : current.form.s3Profile
+          s3Profile: message.source.kind === "s3" ? message.source.s3Profile || "" : current.form.s3Profile,
+          s3Format: message.source.kind === "s3"
+            ? (isKnownS3SourceFormat(message.source.s3Format) ? message.source.s3Format : DEFAULT_S3_TYPE)
+            : current.form.s3Format
         },
         cellViewer: { ...current.cellViewer, isOpen: false },
         error: ""
@@ -234,7 +247,10 @@ export function setOpeningColumn(state: AppState, openingColumnName: string | nu
 }
 
 export function updateFormField(state: AppState, field: keyof ConnectFormState, value: string): AppState {
-  if (field === "localType" && !isLocalSourceKind(value)) {
+  if (field === "localType" && !isKnownLocalSourceKind(value)) {
+    return state;
+  }
+  if (field === "s3Format" && !isKnownS3SourceFormat(value)) {
     return state;
   }
 
@@ -387,7 +403,11 @@ export function isLocalSource(source: SourceDescriptor | null): source is Source
 }
 
 export function isLocalSourceKind(value: unknown): value is LocalSourceKind {
-  return value === "parquet" || value === "jsonl" || value === "dataset" || value === "sqlite" || value === "duckdb";
+  return isKnownLocalSourceKind(value);
+}
+
+export function isS3SourceFormat(value: unknown): value is S3SourceFormat {
+  return isKnownS3SourceFormat(value);
 }
 
 export function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

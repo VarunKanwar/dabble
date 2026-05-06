@@ -6,6 +6,7 @@ import {
   closeCellViewer,
   createInitialState,
   isLocalSourceKind,
+  isS3SourceFormat,
   openCellViewer,
   setCellViewerCopyStatus,
   setCellViewerPretty,
@@ -183,7 +184,8 @@ class DabbleApp {
           type: "openSource",
           source: {
             path: this.state.form.s3Path,
-            s3Profile: this.state.form.s3Profile
+            s3Profile: this.state.form.s3Profile,
+            s3Format: this.state.form.s3Format
           }
         });
         return;
@@ -231,6 +233,11 @@ class DabbleApp {
       case "local-type":
         if (isLocalSourceKind(target.value)) {
           this.state = updateFormField(this.state, "localType", target.value);
+        }
+        return;
+      case "s3-format":
+        if (isS3SourceFormat(target.value)) {
+          this.state = updateFormField(this.state, "s3Format", target.value);
         }
         return;
       default:

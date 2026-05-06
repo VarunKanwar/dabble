@@ -1,5 +1,6 @@
 import type { AppState, CellViewerTable } from "./state.js";
 import { escapeAttr, escapeHtml, formatDisplayNumber, formatPercent, lastSegment, resultMeta, typeGlyph } from "./format.js";
+import { LOCAL_SOURCE_KIND_OPTIONS, S3_SOURCE_FORMAT_OPTIONS } from "../shared/sourceKinds.js";
 
 export function renderApp(state: AppState): string {
   const payload = state.payload;
@@ -350,11 +351,9 @@ function renderConnectMode(state: AppState): string {
             <div class="field">
               <label>Type</label>
               <select id="local-type">
-                ${option("parquet", "Parquet file", state.form.localType)}
-                ${option("jsonl", "JSONL file", state.form.localType)}
-                ${option("duckdb", "DuckDB file", state.form.localType)}
-                ${option("sqlite", "SQLite file", state.form.localType)}
-                ${option("dataset", "Parquet dataset folder", state.form.localType)}
+                ${LOCAL_SOURCE_KIND_OPTIONS
+                  .map((entry) => option(entry.kind, entry.label, state.form.localType))
+                  .join("")}
               </select>
             </div>
             <div class="field">
@@ -376,6 +375,14 @@ function renderConnectMode(state: AppState): string {
             </div>
           </div>
           <div class="form">
+            <div class="field">
+              <label>Type</label>
+              <select id="s3-format">
+                ${S3_SOURCE_FORMAT_OPTIONS
+                  .map((entry) => option(entry.kind, entry.label, state.form.s3Format))
+                  .join("")}
+              </select>
+            </div>
             <div class="field">
               <label>S3 URI</label>
               <input id="s3-path" value="${escapeAttr(state.form.s3Path)}" />
