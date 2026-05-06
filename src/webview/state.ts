@@ -143,6 +143,32 @@ export function applyExtensionMessage(current: AppState, message: ExtensionToWeb
         error: ""
       };
     }
+    case "columnData": {
+      const nextExpandedColumn = message.source.selectedColumn;
+      return {
+        ...current,
+        source: message.source,
+        expandedColumnName: nextExpandedColumn,
+        openingColumnName: nextExpandedColumn,
+        closingColumnName: null,
+        payload: {
+          ...current.payload,
+          columns: message.columns,
+          explorer: message.explorer
+        },
+        error: ""
+      };
+    }
+    case "columnMetricsData":
+      return {
+        ...current,
+        source: message.source,
+        payload: {
+          ...current.payload,
+          columns: message.columns
+        },
+        error: ""
+      };
     case "queryResult":
       return {
         ...current,

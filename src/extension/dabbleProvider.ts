@@ -1,7 +1,7 @@
 import path from "path";
 import * as vscode from "vscode";
-import { createEmptyPayload, type ExtensionToWebviewMessage, type SourceDescriptor, type ViewMode } from "../shared/protocol";
-import { DuckDBService, QuerySession } from "./duckdbService";
+import { createEmptyPayload, type ExtensionToWebviewMessage, type SourceDescriptor, type SourcePayload, type ViewMode } from "../shared/protocol";
+import { DuckDBService, QuerySession, type ExactColumnMetric } from "./duckdbService";
 import { DEFAULT_PREVIEW_LIMIT, inferKindFromPath, normalizeIncomingSource, normalizePreviewLimit } from "./sourceUtils";
 import { getWebviewOptions, renderWebviewShell } from "./webviewHtml";
 import { parseWebviewMessage } from "./webviewMessage";
@@ -29,6 +29,9 @@ interface PanelControllerState {
 interface PanelController {
   state: PanelControllerState;
   activeQuery: QuerySession | null;
+  lastPayload: SourcePayload | null;
+  columnMetricRunId: number;
+  columnMetricsByTable: Map<string, Map<string, ExactColumnMetric>>;
 }
 
 class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocument> {
@@ -154,7 +157,13 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
   private async mountPanel(panel: vscode.WebviewPanel, state: PanelControllerState): Promise<void> {
     panel.webview.options = getWebviewOptions(this.context);
 
-    const controller: PanelController = { state, activeQuery: null };
+    const controller: PanelController = {
+      state,
+      activeQuery: null,
+      lastPayload: null,
+      columnMetricRunId: 0,
+      columnMetricsByTable: new Map()
+    };
 
     const messageDisposable = panel.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
       const message = parseWebviewMessage(rawMessage);
@@ -256,7 +265,7 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
           ...controller.state.source,
           selectedColumn: message.columnName
         };
-        await this.refreshPanel(panel, controller);
+        await this.refreshColumnSelection(panel, controller);
         return;
       case "selectTable":
         controller.state.source = {
@@ -292,32 +301,138 @@ class DabbleProvider implements vscode.CustomReadonlyEditorProvider<DabbleDocume
 
   private async showConnectPanel(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {
     await this.disposeQuerySession(controller);
+    controller.columnMetricRunId += 1;
+    const payload = createEmptyPayload();
+    controller.lastPayload = payload;
     await this.postMessage(panel, {
       type: "sourceData",
       mode: controller.state.mode,
       previewLimit: controller.state.previewLimit,
       source: controller.state.source,
-      payload: createEmptyPayload()
+      payload
     });
     await this.postMessage(panel, { type: "loading", loading: false });
   }
 
   private async refreshPanel(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {
+    const runId = controller.columnMetricRunId + 1;
+    controller.columnMetricRunId = runId;
     await this.disposeQuerySession(controller);
     await this.postMessage(panel, { type: "loading", loading: true });
     const result = await this.duckdb.loadSource(controller.state.source, {
       previewLimit: controller.state.previewLimit
     });
     controller.state.source = result.source;
+    const tableKey = sourceTableKey(result.source);
+    const cachedMetrics = controller.columnMetricsByTable.get(tableKey);
+    const payload = cachedMetrics?.size
+      ? applyCachedColumnMetrics(this.duckdb, result.payload, cachedMetrics)
+      : result.payload;
+    controller.lastPayload = payload;
     panel.title = `Dabble: ${path.basename(result.source.path || "Source")}`;
     await this.postMessage(panel, {
       type: "sourceData",
       mode: controller.state.mode,
       previewLimit: controller.state.previewLimit,
       source: result.source,
-      payload: result.payload
+      payload
     });
     await this.postMessage(panel, { type: "loading", loading: false });
+
+    const needsMetricsHydration =
+      controller.state.mode === "clicked" &&
+      payload.columns.length > 0 &&
+      (cachedMetrics?.size ?? 0) < payload.columns.length;
+
+    if (needsMetricsHydration) {
+      this.hydrateColumnMetrics(panel, controller, result.source, payload.columns, tableKey, runId);
+    }
+  }
+
+  private async refreshColumnSelection(panel: vscode.WebviewPanel, controller: PanelController): Promise<void> {
+    if (!controller.lastPayload) {
+      await this.refreshPanel(panel, controller);
+      return;
+    }
+
+    const tableKey = sourceTableKey(controller.state.source);
+    const metricByColumn = controller.columnMetricsByTable.get(tableKey);
+    const selectedMetric = controller.state.source.selectedColumn
+      ? metricByColumn?.get(controller.state.source.selectedColumn) ?? null
+      : null;
+    const result = await this.duckdb.loadSelectedColumnExplorer(controller.state.source, selectedMetric);
+    controller.state.source = result.source;
+    controller.lastPayload = {
+      ...controller.lastPayload,
+      explorer: result.explorer
+    };
+    await this.postMessage(panel, {
+      type: "columnData",
+      source: result.source,
+      columns: controller.lastPayload.columns,
+      explorer: result.explorer
+    });
+  }
+
+  private hydrateColumnMetrics(
+    panel: vscode.WebviewPanel,
+    controller: PanelController,
+    source: SourceDescriptor,
+    columns: SourcePayload["columns"],
+    tableKey: string,
+    runId: number
+  ): void {
+    const tableMetrics = controller.columnMetricsByTable.get(tableKey) ?? new Map<string, ExactColumnMetric>();
+    controller.columnMetricsByTable.set(tableKey, tableMetrics);
+
+    for (const column of columns) {
+      if (tableMetrics.has(column.name)) {
+        continue;
+      }
+      void this.loadAndPublishColumnMetric(panel, controller, source, tableKey, runId, column.name);
+    }
+  }
+
+  private async loadAndPublishColumnMetric(
+    panel: vscode.WebviewPanel,
+    controller: PanelController,
+    source: SourceDescriptor,
+    tableKey: string,
+    runId: number,
+    columnName: string
+  ): Promise<void> {
+    let metric: ExactColumnMetric;
+    try {
+      metric = await this.duckdb.loadColumnMetric(source, columnName);
+    } catch {
+      return;
+    }
+
+    if (controller.columnMetricRunId !== runId) {
+      return;
+    }
+    if (sourceTableKey(controller.state.source) !== tableKey) {
+      return;
+    }
+    if (!controller.lastPayload) {
+      return;
+    }
+
+    const tableMetrics = controller.columnMetricsByTable.get(tableKey) ?? new Map<string, ExactColumnMetric>();
+    tableMetrics.set(columnName, metric);
+    controller.columnMetricsByTable.set(tableKey, tableMetrics);
+
+    const nextColumns = this.duckdb.applyColumnMetric(controller.lastPayload.columns, columnName, metric);
+    controller.lastPayload = {
+      ...controller.lastPayload,
+      columns: nextColumns
+    };
+
+    await this.postMessage(panel, {
+      type: "columnMetricsData",
+      source: controller.state.source,
+      columns: nextColumns
+    });
   }
 
   private async postMessage(panel: vscode.WebviewPanel, message: ExtensionToWebviewMessage): Promise<void> {
@@ -421,4 +536,23 @@ function viewTypeForResource(resource: vscode.Uri): string {
 
 function formatMegabytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(2);
+}
+
+function sourceTableKey(source: SourceDescriptor): string {
+  return [source.kind, source.path, source.selectedTable ?? "", source.s3Profile ?? ""].join("::");
+}
+
+function applyCachedColumnMetrics(
+  duckdb: DuckDBService,
+  payload: SourcePayload,
+  metricByColumn: Map<string, ExactColumnMetric>
+): SourcePayload {
+  let columns = payload.columns;
+  for (const [columnName, metric] of metricByColumn) {
+    columns = duckdb.applyColumnMetric(columns, columnName, metric);
+  }
+  return {
+    ...payload,
+    columns
+  };
 }

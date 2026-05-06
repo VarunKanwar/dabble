@@ -44,6 +44,12 @@ interface ColumnMetric {
   totalCount: number;
 }
 
+export interface ExactColumnMetric {
+  distinctCount: number;
+  nullCount: number;
+  totalCount: number;
+}
+
 export class DuckDBService {
   private instancePromise: Promise<DuckDBInstance> | null = null;
 
@@ -57,9 +63,7 @@ export class DuckDBService {
       const summaryRows = await this.summarizeRelation(connection);
       const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
       const shouldLoadSelectedColumnDetails = Boolean(normalized.selectedColumn && selectedColumn);
-      const selectedColumnMetric = shouldLoadSelectedColumnDetails && selectedColumn
-        ? await this.buildColumnMetric(connection, selectedColumn)
-        : null;
+      const selectedColumnMetric: ColumnMetric | null = null;
       const preview = await this.previewRelation(connection, previewLimit);
       const stats = await this.buildStats(connection, normalized, context, schema, previewLimit);
       const explorer = shouldLoadSelectedColumnDetails
@@ -112,6 +116,45 @@ export class DuckDBService {
       await this.prepareSourceContext(connection, normalized);
       return executeReadonlyQuery(connection, readonlySql);
     });
+  }
+
+  async loadSelectedColumnExplorer(source: SourceDescriptor, selectedColumnMetric: ExactColumnMetric | null): Promise<{
+    source: SourceDescriptor;
+    explorer: ExplorerPayload;
+  }> {
+    const normalized = normalizeSource(source);
+    return this.withSourceConnection(normalized, async (connection) => {
+      await this.prepareEnvironment(connection, normalized);
+      const context = await this.prepareSourceContext(connection, normalized);
+      const schema = await this.describeRelation(connection);
+      const selectedColumn = pickSelectedColumn(schema, normalized.selectedColumn);
+      const shouldLoadSelectedColumnDetails = Boolean(normalized.selectedColumn && selectedColumn);
+      const explorer = shouldLoadSelectedColumnDetails
+        ? await this.buildExplorer(connection, selectedColumn, schema, selectedColumnMetric)
+        : createEmptyExplorer();
+
+      return {
+        source: {
+          ...normalized,
+          selectedTable: context.selectedTable,
+          selectedColumn
+        },
+        explorer
+      };
+    });
+  }
+
+  async loadColumnMetric(source: SourceDescriptor, columnName: string): Promise<ExactColumnMetric> {
+    const normalized = normalizeSource(source);
+    return this.withSourceConnection(normalized, async (connection) => {
+      await this.prepareEnvironment(connection, normalized);
+      await this.prepareSourceContext(connection, normalized);
+      return this.buildColumnMetric(connection, columnName);
+    });
+  }
+
+  applyColumnMetric(baseColumns: ColumnSummary[], columnName: string, metric: ExactColumnMetric): ColumnSummary[] {
+    return applyColumnMetricToSummaries(baseColumns, columnName, metric);
   }
 
   async startQuery(source: SourceDescriptor, sql: string, state: Partial<SourceDescriptor> = {}): Promise<QuerySession> {
@@ -783,6 +826,29 @@ function buildColumns(
       nullDisplay: displayNullValue(nullPercentage),
       distinctDisplay: metric ? displayDistinctValue(metric) : "…",
       summary: summarySummary(row, metric)
+    };
+  });
+}
+
+function applyColumnMetricToSummaries(
+  baseColumns: ColumnSummary[],
+  columnName: string,
+  metric: ExactColumnMetric
+): ColumnSummary[] {
+  return baseColumns.map((column) => {
+    if (column.name !== columnName) {
+      return {
+        ...column
+      };
+    }
+
+    const nullPercentage = formatNullPercentageFromMetric(metric);
+    return {
+      ...column,
+      distinctCount: formatNumber(metric.distinctCount),
+      distinctDisplay: displayDistinctValue(metric),
+      nullPercentage,
+      nullDisplay: displayNullValue(nullPercentage)
     };
   });
 }

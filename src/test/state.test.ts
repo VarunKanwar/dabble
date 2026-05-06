@@ -118,6 +118,145 @@ test("sourceData sets localType to jsonl for JSONL sources", () => {
   assert.equal(next.form.localType, "jsonl");
 });
 
+test("columnData patches explorer and columns without replacing query results", () => {
+  const seeded = applyExtensionMessage(createInitialState(), {
+    type: "sourceData",
+    mode: "clicked",
+    previewLimit: 100,
+    source: {
+      kind: "parquet",
+      path: "/tmp/example.parquet",
+      selectedTable: "example",
+      selectedColumn: null,
+      s3Profile: null
+    },
+    payload: {
+      ...createEmptyPayload(),
+      path: "/tmp/example.parquet",
+      title: "example",
+      tables: ["example"],
+      queryHeaders: ["id"],
+      queryRows: [["1"]],
+      querySummary: [["Rows", "1"]],
+      columns: [
+        {
+          name: "id",
+          type: "INTEGER",
+          distinctCount: "Select column to compute exact values.",
+          nullPercentage: "",
+          nullDisplay: "–",
+          distinctDisplay: "…",
+          summary: "1 to 5"
+        }
+      ]
+    }
+  });
+
+  const next = applyExtensionMessage(seeded, {
+    type: "columnData",
+    source: {
+      kind: "parquet",
+      path: "/tmp/example.parquet",
+      selectedTable: "example",
+      selectedColumn: "id",
+      s3Profile: null
+    },
+    columns: [
+      {
+        name: "id",
+        type: "INTEGER",
+        distinctCount: "5",
+        nullPercentage: "0%",
+        nullDisplay: "–",
+        distinctDisplay: "5",
+        summary: "1 to 5"
+      }
+    ],
+    explorer: {
+      title: "id",
+      type: "INTEGER",
+      view: "topValues",
+      distributionRows: [],
+      sql: "SELECT id, count(*) FROM selected_relation GROUP BY 1"
+    }
+  });
+
+  assert.equal(next.queryResult.headers.join(","), "id");
+  assert.equal(next.queryResult.rows.length, 1);
+  assert.equal(next.payload.columns[0].distinctDisplay, "5");
+  assert.equal(next.payload.explorer.title, "id");
+  assert.equal(next.expandedColumnName, "id");
+});
+
+test("columnMetricsData patches only column stats and keeps explorer state intact", () => {
+  const seeded = applyExtensionMessage(createInitialState(), {
+    type: "sourceData",
+    mode: "clicked",
+    previewLimit: 100,
+    source: {
+      kind: "parquet",
+      path: "/tmp/example.parquet",
+      selectedTable: "example",
+      selectedColumn: "id",
+      s3Profile: null
+    },
+    payload: {
+      ...createEmptyPayload(),
+      path: "/tmp/example.parquet",
+      title: "example",
+      tables: ["example"],
+      columns: [
+        {
+          name: "id",
+          type: "INTEGER",
+          distinctCount: "Select column to compute exact values.",
+          nullPercentage: "",
+          nullDisplay: "–",
+          distinctDisplay: "…",
+          summary: "1 to 5"
+        },
+        {
+          name: "name",
+          type: "VARCHAR",
+          distinctCount: "Select column to compute exact values.",
+          nullPercentage: "",
+          nullDisplay: "–",
+          distinctDisplay: "…",
+          summary: "alice to erin"
+        }
+      ],
+      explorer: {
+        title: "id",
+        type: "INTEGER",
+        view: "topValues",
+        distributionRows: [],
+        sql: "SELECT id, count(*) FROM selected_relation GROUP BY 1"
+      }
+    }
+  });
+
+  const next = applyExtensionMessage(seeded, {
+    type: "columnMetricsData",
+    source: seeded.source!,
+    columns: [
+      {
+        name: "id",
+        type: "INTEGER",
+        distinctCount: "5",
+        nullPercentage: "0%",
+        nullDisplay: "–",
+        distinctDisplay: "5",
+        summary: "1 to 5"
+      },
+      seeded.payload.columns[1]
+    ]
+  });
+
+  assert.equal(next.payload.columns[0].distinctDisplay, "5");
+  assert.equal(next.payload.explorer.title, "id");
+  assert.equal(next.queryResult.rows.length, seeded.queryResult.rows.length);
+});
+
 test("cell viewer opens and closes with explicit state transitions", () => {
   const initial = createInitialState();
   const opened = openCellViewer(initial, {

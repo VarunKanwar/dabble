@@ -104,6 +104,17 @@ export type ExtensionToWebviewMessage =
       source: SourceDescriptor;
       payload: SourcePayload;
     }
+  | {
+      type: "columnData";
+      source: SourceDescriptor;
+      columns: ColumnSummary[];
+      explorer: ExplorerPayload;
+    }
+  | {
+      type: "columnMetricsData";
+      source: SourceDescriptor;
+      columns: ColumnSummary[];
+    }
   | { type: "queryResult"; query: QueryResult; append: boolean }
   | { type: "error"; message: string }
   | { type: "loading"; loading: boolean }

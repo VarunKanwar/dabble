@@ -124,6 +124,19 @@ test("loadSource parquet computes explorer details when a column is explicitly s
   assert.equal(result.payload.explorer.title, "id");
 });
 
+test("loadColumnMetric + applyColumnMetric update only the targeted column", async () => {
+  const svc = new DuckDBService();
+  const initial = await svc.loadSource(source("parquet", parquetPath));
+  const metric = await svc.loadColumnMetric(initial.source, "id");
+  const updated = svc.applyColumnMetric(initial.payload.columns, "id", metric);
+  const selected = updated.find((entry) => entry.name === "id");
+  const unselected = updated.find((entry) => entry.name === "name");
+
+  assert.equal(selected?.distinctDisplay, "5");
+  assert.equal(selected?.nullDisplay, "–");
+  assert.equal(unselected?.distinctDisplay, "…");
+});
+
 test("loadSource parquet respects previewLimit", async () => {
   const svc = new DuckDBService();
   const result = await svc.loadSource(source("parquet", parquetPath), { previewLimit: 2 });
@@ -132,7 +145,7 @@ test("loadSource parquet respects previewLimit", async () => {
   assert.ok(result.payload.previewText.includes("2"));
 });
 
-test("loadSource parquet uses exact distinct counts and full-column percentages for categorical explorer", async () => {
+test("loadSource parquet keeps exact column stats lazy even when a column is selected", async () => {
   const generated = await createUniqueStringParquet(1000);
 
   try {
@@ -143,10 +156,28 @@ test("loadSource parquet uses exact distinct counts and full-column percentages 
     assert.equal(result.source.selectedColumn, "source_report_id");
     assert.equal(result.payload.explorer.view, "topValues");
     assert.ok(column, "expected generated column to be present");
-    assert.equal(column?.distinctCount, "1,000");
-    assert.equal(column?.distinctDisplay, "1,000");
-    assert.equal(result.payload.explorer.distributionRows.length, 6);
-    for (const row of result.payload.explorer.distributionRows) {
+    assert.equal(column?.distinctDisplay, "…");
+  } finally {
+    generated.cleanup();
+  }
+});
+
+test("loadColumnMetric returns exact values for high-cardinality categorical columns", async () => {
+  const generated = await createUniqueStringParquet(1000);
+
+  try {
+    const svc = new DuckDBService();
+    const metric = await svc.loadColumnMetric(source("parquet", generated.path), "source_report_id");
+    const rows = await svc.loadSelectedColumnExplorer(
+      { ...source("parquet", generated.path), selectedColumn: "source_report_id" },
+      metric
+    );
+
+    assert.equal(metric.distinctCount, 1000);
+    assert.equal(metric.nullCount, 0);
+    assert.equal(rows.explorer.view, "topValues");
+    assert.equal(rows.explorer.distributionRows.length, 6);
+    for (const row of rows.explorer.distributionRows) {
       assert.equal(row.value, 1);
       assert.ok(Math.abs(row.percent - 0.1) < 0.000001);
     }
@@ -155,17 +186,39 @@ test("loadSource parquet uses exact distinct counts and full-column percentages 
   }
 });
 
-test("loadSource parquet uses histogram view for high-cardinality numeric columns", async () => {
+test("loadSelectedColumnExplorer uses cached metrics to choose histogram for high-cardinality numeric columns", async () => {
   const generated = await createUniqueNumericParquet(1000);
 
   try {
     const svc = new DuckDBService();
-    const result = await svc.loadSource({ ...source("parquet", generated.path), selectedColumn: "numeric_id" });
+    const metric = await svc.loadColumnMetric(source("parquet", generated.path), "numeric_id");
+    const result = await svc.loadSelectedColumnExplorer(
+      { ...source("parquet", generated.path), selectedColumn: "numeric_id" },
+      metric
+    );
 
     assert.equal(result.source.selectedColumn, "numeric_id");
-    assert.equal(result.payload.explorer.view, "histogram");
-    assert.equal(result.payload.explorer.distributionRows.length, 6);
-    assert.ok(result.payload.explorer.distributionRows[0]?.label.includes("["));
+    assert.equal(result.explorer.view, "histogram");
+    assert.equal(result.explorer.distributionRows.length, 6);
+    assert.ok(result.explorer.distributionRows[0]?.label.includes("["));
+  } finally {
+    generated.cleanup();
+  }
+});
+
+test("loadSelectedColumnExplorer falls back to top values when metric is unavailable", async () => {
+  const generated = await createUniqueNumericParquet(1000);
+
+  try {
+    const svc = new DuckDBService();
+    const result = await svc.loadSelectedColumnExplorer(
+      { ...source("parquet", generated.path), selectedColumn: "numeric_id" },
+      null
+    );
+
+    assert.equal(result.source.selectedColumn, "numeric_id");
+    assert.equal(result.explorer.view, "topValues");
+    assert.equal(result.explorer.distributionRows.length, 6);
   } finally {
     generated.cleanup();
   }
