@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.4.0
+
+- Added an explicit on-demand compute control for expensive preview statistics.
+- Switched preview column statistics hydration to lazy, progressively cached updates.
+- Improved large-source open behavior to reduce memory pressure during initialization.
+- Added S3 JSONL support in the connect flow.
+- Optimized S3 JSONL loading and added an explicit format override option.
+- Tightened JSON tree viewer styling for denser inspection.
+
 ## 0.3.0
 
 - Added JSONL/NDJSON source support in Dabble's preview/query flow using native DuckDB JSON readers.
